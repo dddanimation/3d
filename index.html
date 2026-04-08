@@ -2,17 +2,18 @@
 <html>
 <head>
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
-  <title>Foundations AR | Clean Render</title>
+  <title>Foundations AR</title>
   
   <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
   <script src="https://cdn.jsdelivr.net/gh/c-frame/aframe-extras@7.2.0/dist/aframe-extras.min.js"></script>
 
   <style>
-    /* Absolute reset to ensure the camera feed is visible */
+    /* 1. Force the background to be transparent so the video shows through */
     html, body { 
       margin: 0; padding: 0; width: 100%; height: 100%; 
-      overflow: hidden; background-color: transparent !important; 
+      overflow: hidden; 
+      background: transparent !important; 
     }
     
     #overlay {
@@ -27,7 +28,9 @@
       text-transform: uppercase; 
     }
 
-    /* Kills any default MindAR borders or frames */
+    #marker-preview { width: 150px; border: 1px solid #444; margin-bottom: 25px; }
+
+    /* Hide the default MindAR UI that can cause white borders */
     .mindar-ui-scanning, .mindar-ui-loading { display: none !important; }
   </style>
 </head>
@@ -35,7 +38,7 @@
 
   <div id="overlay">
     <h1 style="letter-spacing: 3px; font-weight: 300; margin-bottom: 25px;">FOUNDATIONS</h1>
-    <img src="https://dddanimation.github.io/3d/enslaved.jpg" style="width: 150px; border: 1px solid #444; margin-bottom: 25px;">
+    <img src="https://dddanimation.github.io/3d/enslaved.jpg" id="marker-preview">
     <button id="start-btn">Enter Experience</button>
   </div>
 
@@ -72,13 +75,18 @@
     const sceneEl = document.querySelector('a-scene');
 
     startBtn.addEventListener('click', () => {
+      // Force the background of the body to transparent immediately on click
+      document.body.style.backgroundColor = "transparent";
       sceneEl.systems["mindar-image-system"].start(); 
     });
 
     sceneEl.addEventListener("arReady", () => {
       overlay.style.display = "none";
-      // Force transparency again once ready
-      document.body.style.backgroundColor = "transparent";
+    });
+
+    // Final insurance: if the background is still black, this finds the video and pulls it forward
+    sceneEl.addEventListener("targetFound", () => {
+        document.body.style.backgroundColor = "transparent";
     });
   </script>
 </body>
