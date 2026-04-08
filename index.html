@@ -2,7 +2,7 @@
 <html>
 <head>
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
-  <title>Foundations AR</title>
+  <title>Foundations AR | Interactive</title>
   
   <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
@@ -10,28 +10,45 @@
 
   <style>
     html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background-color: #000; }
+    
+    /* Model-Viewer Style Overlay */
     #overlay {
       position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-      background: #000; color: white; display: flex; flex-direction: column;
-      justify-content: center; align-items: center; z-index: 9999; font-family: sans-serif;
+      background: radial-gradient(circle, #222 0%, #000 100%); color: white;
+      display: flex; flex-direction: column; justify-content: center;
+      align-items: center; z-index: 9999; font-family: sans-serif;
     }
-    #start-btn { padding: 18px 40px; font-size: 18px; background: #fff; color: #000; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; text-transform: uppercase; }
-    #marker-preview { width: 160px; border: 1px solid rgba(255,255,255,0.3); margin-bottom: 30px; }
+    
+    #start-btn {
+      padding: 15px 35px; font-size: 16px; background: #fff; color: #000;
+      border: none; border-radius: 25px; cursor: pointer; font-weight: bold;
+      text-transform: uppercase; letter-spacing: 1px; box-shadow: 0 4px 15px rgba(255,255,255,0.2);
+    }
+
+    #marker-preview { width: 140px; border-radius: 8px; margin-bottom: 20px; border: 1px solid #444; }
+
+    /* Hotspot Styling */
+    .hotspot-label {
+      background: rgba(255, 255, 255, 0.9); border-radius: 4px;
+      color: #000; font-family: sans-serif; font-size: 14px;
+      padding: 4px 10px; border: 1px solid #333; white-space: nowrap;
+    }
+
     .mindar-ui-scanning, .mindar-ui-loading { display: none !important; }
   </style>
 </head>
 <body>
 
   <div id="overlay">
-    <h1 style="letter-spacing: 3px; font-weight: 300; margin-bottom: 25px;">FOUNDATIONS</h1>
     <img id="marker-preview" src="https://dddanimation.github.io/3d/enslaved.jpg">
-    <button id="start-btn">Enter Experience</button>
+    <button id="start-btn">View in your space</button>
+    <p style="font-size: 12px; margin-top: 15px; opacity: 0.6;">Scan the Marietta Plaque</p>
   </div>
 
   <a-scene 
-    mindar-image="imageTargetSrc: https://dddanimation.github.io/3d/targets.mind; autoStart: false; uiScanning: false; uiLoading: false; maxTrack: 1; filterMinCF: 0.0001; filterBeta: 0.001;" 
+    mindar-image="imageTargetSrc: https://dddanimation.github.io/3d/targets.mind; autoStart: false; uiScanning: false; filterMinCF: 0.0001; filterBeta: 0.001;" 
     color-space="sRGB" 
-    renderer="colorManagement: true, physicallyCorrectLights: true" 
+    renderer="colorManagement: true, physicallyCorrectLights: true, toneMapping: neutral" 
     vr-mode-ui="enabled: false" 
     device-orientation-permission-ui="enabled: false">
     
@@ -39,19 +56,35 @@
       <a-asset-item id="sculpture" src="https://dddanimation.github.io/3d/enslaved.glb"></a-asset-item>
     </a-assets>
 
-    <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
+    <a-camera position="0 0 0" look-controls="enabled: false" cursor="fuse: false; rayOrigin: mouse;" raycaster="objects: .clickable"></a-camera>
 
-    <a-light type="ambient" intensity="0.4"></a-light>
-    <a-light type="directional" position="1 2 1" intensity="0.5"></a-light>
+    <a-light type="ambient" intensity="0.6"></a-light>
+    <a-light type="directional" position="1 2 1" intensity="1.2" castShadow="true"></a-light>
 
     <a-entity mindar-image-target="targetIndex: 0">
-      <a-gltf-model 
-        src="#sculpture" 
-        position="0 -0.25 0.1" 
-        scale="0.05 0.05 0.05"
-        rotation="0 0 0"
-        animation-mixer>
-      </a-gltf-model>
+      
+      <a-entity position="0 -0.35 0" scale="0.05 0.05 0.05">
+          <a-gltf-model 
+            src="#sculpture" 
+            rotation="0 0 0" 
+            animation-mixer
+            shadow="cast: true; receive: true">
+            
+            <a-entity position="-3.04 9.37 0.39" class="clickable">
+              <a-sphere radius="0.2" color="#fff" material="emissive: #fff; emissiveIntensity: 0.5"></a-sphere>
+              <a-entity 
+                text="value: Anne Celestia; align: center; width: 4; color: black; background-color: white;" 
+                position="0 0.5 0" 
+                geometry="primitive: plane; height: 0.4; width: 1.8" 
+                material="color: white; opacity: 0.9">
+              </a-entity>
+            </a-entity>
+
+          </a-gltf-model>
+
+          <a-plane rotation="-90 0 0" width="10" height="10" material="shadowOnly: true" shadow="receive: true" opacity="0.6"></a-plane>
+      </a-entity>
+
     </a-entity>
   </a-scene>
 
