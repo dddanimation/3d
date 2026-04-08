@@ -5,10 +5,13 @@
   <script src="https://cdn.jsdelivr.net/gh/c-frame/aframe-extras@7.2.0/dist/aframe-extras.min.js"></script>
 
   <div id="loading-screen" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: #000; color: white; display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 1000; font-family: sans-serif; text-align: center; padding: 20px;">
-    <h2 style="margin-bottom: 10px;">FOUNDATIONS AR</h2>
-    <img src="https://dddanimation.github.io/3d/enslaved.jpg" style="width: 150px; border: 1px solid #fff; margin-bottom: 20px; border-radius: 4px;">
-    <button id="start-btn" style="padding: 15px 30px; font-size: 18px; background: #fff; border: none; border-radius: 8px; cursor: pointer; font-weight: bold;">START CAMERA</button>
-    <p id="status-text" style="margin-top: 15px; font-size: 12px; opacity: 0.7;">Ensure you are on HTTPS</p>
+    <h2 style="margin-bottom: 15px; letter-spacing: 2px;">FOUNDATIONS AR</h2>
+    
+    <img src="https://dddanimation.github.io/3d/enslaved.jpg" style="width: 150px; border: 1px solid #fff; margin-bottom: 25px; border-radius: 4px;">
+    
+    <button id="start-btn" style="padding: 18px 36px; font-size: 18px; background: #fff; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; text-transform: uppercase;">Start Experience</button>
+    
+    <p id="status-text" style="margin-top: 20px; font-size: 12px; opacity: 0.6;">Ensure camera permissions are allowed</p>
   </div>
 
   <a-scene 
@@ -50,17 +53,20 @@
     const sceneEl = document.querySelector('a-scene');
 
     startBtn.addEventListener('click', () => {
-      statusText.innerText = "Requesting Camera...";
+      statusText.innerText = "Opening Camera...";
       const arSystem = sceneEl.systems["mindar-image-system"];
       arSystem.start(); 
     });
 
+    // When the AR engine is ready, hide the welcome screen
     sceneEl.addEventListener("arReady", () => {
       loadingScreen.style.display = "none";
     });
 
+    // Error logging for on-site debugging
     sceneEl.addEventListener("arError", (event) => {
-      statusText.innerText = "Camera Error. Please refresh and allow permissions.";
+      statusText.innerText = "Error: Camera access is required for AR.";
+      statusText.style.color = "red";
     });
   </script>
 </div>
