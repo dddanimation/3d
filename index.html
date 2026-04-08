@@ -2,21 +2,32 @@
 <html>
 <head>
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
-  <title>Foundations AR</title>
+  <title>Foundations AR | Clean Render</title>
   
   <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
   <script src="https://cdn.jsdelivr.net/gh/c-frame/aframe-extras@7.2.0/dist/aframe-extras.min.js"></script>
 
   <style>
-    html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background-color: #000; }
+    /* Absolute reset to ensure the camera feed is visible */
+    html, body { 
+      margin: 0; padding: 0; width: 100%; height: 100%; 
+      overflow: hidden; background-color: transparent !important; 
+    }
+    
     #overlay {
       position: fixed; top: 0; left: 0; width: 100%; height: 100%;
       background: #000; color: white; display: flex; flex-direction: column;
       justify-content: center; align-items: center; z-index: 9999; font-family: sans-serif;
     }
-    #start-btn { padding: 18px 40px; font-size: 18px; background: #fff; color: #000; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; text-transform: uppercase; }
-    #marker-preview { width: 160px; border: 1px solid rgba(255,255,255,0.3); margin-bottom: 30px; }
+    
+    #start-btn { 
+      padding: 18px 40px; font-size: 18px; background: #fff; color: #000; 
+      border: none; border-radius: 4px; cursor: pointer; font-weight: bold; 
+      text-transform: uppercase; 
+    }
+
+    /* Kills any default MindAR borders or frames */
     .mindar-ui-scanning, .mindar-ui-loading { display: none !important; }
   </style>
 </head>
@@ -24,14 +35,14 @@
 
   <div id="overlay">
     <h1 style="letter-spacing: 3px; font-weight: 300; margin-bottom: 25px;">FOUNDATIONS</h1>
-    <img id="marker-preview" src="https://dddanimation.github.io/3d/enslaved.jpg">
+    <img src="https://dddanimation.github.io/3d/enslaved.jpg" style="width: 150px; border: 1px solid #444; margin-bottom: 25px;">
     <button id="start-btn">Enter Experience</button>
   </div>
 
   <a-scene 
     mindar-image="imageTargetSrc: https://dddanimation.github.io/3d/targets.mind; autoStart: false; uiScanning: false; uiLoading: false; maxTrack: 1; filterMinCF: 0.0001; filterBeta: 0.001;" 
     color-space="sRGB" 
-    renderer="colorManagement: true, physicallyCorrectLights: true" 
+    renderer="colorManagement: true, physicallyCorrectLights: true, alpha: true" 
     vr-mode-ui="enabled: false" 
     device-orientation-permission-ui="enabled: false">
     
@@ -47,7 +58,7 @@
     <a-entity mindar-image-target="targetIndex: 0">
       <a-gltf-model 
         src="#sculpture" 
-        position="0 -0.25 0.1" 
+        position="0 -0.4 0.1" 
         scale="0.05 0.05 0.05"
         rotation="0 0 0"
         animation-mixer>
@@ -66,6 +77,8 @@
 
     sceneEl.addEventListener("arReady", () => {
       overlay.style.display = "none";
+      // Force transparency again once ready
+      document.body.style.backgroundColor = "transparent";
     });
   </script>
 </body>
