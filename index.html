@@ -9,17 +9,17 @@
   <script src="https://cdn.jsdelivr.net/gh/c-frame/aframe-extras@7.2.0/dist/aframe-extras.min.js"></script>
 
   <style>
-    /* 1. Force the background to be transparent so the video shows through */
     html, body { 
       margin: 0; padding: 0; width: 100%; height: 100%; 
       overflow: hidden; 
-      background: transparent !important; 
+      background: #000; /* Start black to avoid white flashes */
     }
     
     #overlay {
       position: fixed; top: 0; left: 0; width: 100%; height: 100%;
       background: #000; color: white; display: flex; flex-direction: column;
       justify-content: center; align-items: center; z-index: 9999; font-family: sans-serif;
+      transition: opacity 0.5s ease;
     }
     
     #start-btn { 
@@ -30,7 +30,6 @@
 
     #marker-preview { width: 150px; border: 1px solid #444; margin-bottom: 25px; }
 
-    /* Hide the default MindAR UI that can cause white borders */
     .mindar-ui-scanning, .mindar-ui-loading { display: none !important; }
   </style>
 </head>
@@ -43,9 +42,9 @@
   </div>
 
   <a-scene 
-    mindar-image="imageTargetSrc: https://dddanimation.github.io/3d/targets.mind; autoStart: false; uiScanning: false; uiLoading: false; maxTrack: 1; filterMinCF: 0.0001; filterBeta: 0.001;" 
+    mindar-image="imageTargetSrc: https://dddanimation.github.io/3d/targets.mind; autoStart: false; uiScanning: false; uiLoading: false; maxTrack: 1; filterMinCF: 0.01; filterBeta: 10; missTolerance: 500;" 
     color-space="sRGB" 
-    renderer="colorManagement: true, physicallyCorrectLights: true, alpha: true" 
+    renderer="colorManagement: true, physicallyCorrectLights: true, alpha: true, antialias: true, precision: mediump" 
     vr-mode-ui="enabled: false" 
     device-orientation-permission-ui="enabled: false">
     
@@ -55,7 +54,7 @@
 
     <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
 
-    <a-light type="ambient" intensity="0.5"></a-light>
+    <a-light type="ambient" intensity="0.8"></a-light>
     <a-light type="directional" position="1 2 1" intensity="0.7"></a-light>
 
     <a-entity mindar-image-target="targetIndex: 0">
@@ -75,18 +74,24 @@
     const sceneEl = document.querySelector('a-scene');
 
     startBtn.addEventListener('click', () => {
-      // Force the background of the body to transparent immediately on click
-      document.body.style.backgroundColor = "transparent";
-      sceneEl.systems["mindar-image-system"].start(); 
+      // Start the AR system
+      sceneEl.systems["mindar-image-system"].start();
+      
+      // Give a small visual feedback that it's loading
+      startBtn.innerHTML = "LOADING...";
     });
 
+    // When AR is actually ready and the camera is streaming
     sceneEl.addEventListener("arReady", () => {
-      overlay.style.display = "none";
+      overlay.style.opacity = "0";
+      setTimeout(() => {
+        overlay.style.display = "none";
+      }, 500);
     });
 
-    // Final insurance: if the background is still black, this finds the video and pulls it forward
-    sceneEl.addEventListener("targetFound", () => {
-        document.body.style.backgroundColor = "transparent";
+    // Error handling if camera fails
+    sceneEl.addEventListener("arError", () => {
+        alert("Camera error. Please ensure you are using HTTPS and have granted permissions.");
     });
   </script>
 </body>
