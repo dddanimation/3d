@@ -4,11 +4,10 @@
   <meta charset="UTF-8">
   <meta name="viewport"
         content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
-  <title>Foundations AR</title>
+  <title>Foundations AR - Baked</title>
 
   <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
-  <script src="https://cdn.jsdelivr.net/gh/donmccurdy/aframe-extras@v7.2.0/dist/aframe-extras.min.js"></script>
 
   <style>
     html, body {
@@ -17,7 +16,6 @@
       width: 100%;
       height: 100%;
       overflow: hidden;
-      /* Background must be transparent to see the camera video behind it */
       background: transparent !important;
       touch-action: none;
     }
@@ -25,7 +23,7 @@
     #overlay {
       position: fixed;
       inset: 0;
-      background: #000; /* Solid black only for the start screen */
+      background: #000;
       color: #fff;
       display: flex;
       flex-direction: column;
@@ -33,18 +31,12 @@
       align-items: center;
       z-index: 9999;
       font-family: sans-serif;
-      transition: opacity 0.8s ease, visibility 0.8s;
-    }
-
-    #overlay.hidden {
-      opacity: 0;
-      visibility: hidden;
-      pointer-events: none;
+      transition: opacity 0.6s ease;
     }
 
     #start-btn {
-      padding: 16px 36px;
-      font-size: 16px;
+      padding: 18px 40px;
+      font-size: 18px;
       background: #fff;
       color: #000;
       border: none;
@@ -64,27 +56,18 @@
 <body>
 
   <div id="overlay">
-    <h1 style="letter-spacing: 3px; font-weight: 300;">FOUNDATIONS</h1>
-    <img src="https://dddanimation.github.io/3d/enslaved.jpg" 
-         style="width: 150px; margin-bottom: 25px; border: 1px solid #444;">
+    <h1 style="letter-spacing: 3px; font-weight: 300; margin-bottom: 25px;">FOUNDATIONS</h1>
     <button id="start-btn">Enter Experience</button>
   </div>
 
   <a-scene
-    embedded
     mindar-image="
       imageTargetSrc: https://dddanimation.github.io/3d/targets.mind;
       autoStart: false;
       uiScanning: false;
       uiLoading: false;
     "
-    renderer="
-      alpha: true; 
-      colorManagement: true;
-      physicallyCorrectLights: true;
-      exposure: 0.85; 
-      toneMapping: ACESFilmic;
-    "
+    renderer="alpha: true; colorManagement: true;"
     vr-mode-ui="enabled: false"
     device-orientation-permission-ui="enabled: false">
 
@@ -94,14 +77,11 @@
 
     <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
 
-    <a-light type="ambient" intensity="0.2"></a-light>
-    <a-light type="directional" position="1 4 2" intensity="0.7"></a-light>
-
     <a-entity mindar-image-target="targetIndex: 0">
       <a-entity rotation="90 60 0" scale="0.19 0.19 0.19">
         <a-gltf-model
           src="#sculpture"
-          animation-mixer>
+          force-unlit>
         </a-gltf-model>
       </a-entity>
     </a-entity>
@@ -109,14 +89,36 @@
   </a-scene>
 
   <script>
+    // Component to force the model to use an unlit (Basic) material
+    AFRAME.registerComponent('force-unlit', {
+      init: function () {
+        this.el.addEventListener('model-loaded', () => {
+          const mesh = this.el.getObject3D('mesh');
+          mesh.traverse(node => {
+            if (node.isMesh) {
+              // Switch to MeshBasicMaterial to use baked textures only
+              const oldMat = node.material;
+              node.material = new THREE.MeshBasicMaterial({
+                map: oldMat.map,
+                color: 0xffffff,
+                transparent: oldMat.transparent,
+                alphaTest: oldMat.alphaTest,
+                side: oldMat.side
+              });
+            }
+          });
+        });
+      }
+    });
+
     const startBtn = document.getElementById('start-btn');
     const overlay = document.getElementById('overlay');
     const sceneEl = document.querySelector('a-scene');
 
     startBtn.addEventListener('click', () => {
-      overlay.classList.add('hidden');
-      
-      // Start the AR engine
+      overlay.style.opacity = "0";
+      setTimeout(() => { overlay.style.display = "none"; }, 600);
+
       if (sceneEl.hasLoaded) {
         sceneEl.systems["mindar-image-system"].start();
       } else {
