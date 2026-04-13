@@ -8,7 +8,6 @@
 
   <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
-  
   <script src="https://cdn.jsdelivr.net/gh/donmccurdy/aframe-extras@v7.2.0/dist/aframe-extras.min.js"></script>
 
   <style>
@@ -18,21 +17,22 @@
       width: 100%;
       height: 100%;
       overflow: hidden;
-      background: #000;
+      /* Background must be transparent to see the camera video behind it */
+      background: transparent !important;
       touch-action: none;
     }
 
     #overlay {
       position: fixed;
       inset: 0;
-      background: #000;
+      background: #000; /* Solid black only for the start screen */
       color: #fff;
       display: flex;
       flex-direction: column;
       justify-content: center;
       align-items: center;
       z-index: 9999;
-      font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+      font-family: sans-serif;
       transition: opacity 0.8s ease, visibility 0.8s;
     }
 
@@ -42,46 +42,16 @@
       pointer-events: none;
     }
 
-    #overlay h1 {
-      letter-spacing: 4px;
-      font-weight: 300;
-      margin-bottom: 25px;
-      text-transform: uppercase;
-    }
-
-    #marker-preview {
-      width: 180px;
-      border: 1px solid #444;
-      margin-bottom: 30px;
-      border-radius: 4px;
-    }
-
     #start-btn {
       padding: 16px 36px;
       font-size: 16px;
       background: #fff;
       color: #000;
       border: none;
-      border-radius: 2px;
+      border-radius: 4px;
       cursor: pointer;
       font-weight: bold;
-      letter-spacing: 1px;
       text-transform: uppercase;
-    }
-
-    /* Scanning indicator */
-    #scanning-overlay {
-      position: fixed;
-      top: 50%;
-      left: 50%;
-      transform: translate(-50%, -50%);
-      color: white;
-      font-family: sans-serif;
-      text-align: center;
-      z-index: 10;
-      pointer-events: none;
-      opacity: 0.7;
-      display: none;
     }
 
     /* Hide MindAR default UI */
@@ -94,33 +64,27 @@
 <body>
 
   <div id="overlay">
-    <h1>FOUNDATIONS</h1>
-    <img id="marker-preview"
-         src="https://dddanimation.github.io/3d/enslaved.jpg"
-         alt="Point camera at this marker">
+    <h1 style="letter-spacing: 3px; font-weight: 300;">FOUNDATIONS</h1>
+    <img src="https://dddanimation.github.io/3d/enslaved.jpg" 
+         style="width: 150px; margin-bottom: 25px; border: 1px solid #444;">
     <button id="start-btn">Enter Experience</button>
   </div>
 
-  <div id="scanning-overlay">Scanning for marker...</div>
-
   <a-scene
+    embedded
     mindar-image="
       imageTargetSrc: https://dddanimation.github.io/3d/targets.mind;
       autoStart: false;
       uiScanning: false;
       uiLoading: false;
-      maxTrack: 1;
-      filterMinCF: 0.0001;
-      filterBeta: 0.001;
     "
     renderer="
+      alpha: true; 
       colorManagement: true;
       physicallyCorrectLights: true;
       exposure: 0.85; 
       toneMapping: ACESFilmic;
-      antialias: true;
     "
-    color-space="sRGB"
     vr-mode-ui="enabled: false"
     device-orientation-permission-ui="enabled: false">
 
@@ -128,23 +92,17 @@
       <a-asset-item id="sculpture" src="https://dddanimation.github.io/3d/enslaved.glb"></a-asset-item>
     </a-assets>
 
-    <a-camera position="0 0 0" look-controls="enabled: false" cursor="fuse: false; rayOrigin: mouse;"></a-camera>
+    <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
 
     <a-light type="ambient" intensity="0.2"></a-light>
-    <a-light type="directional" position="1 4 2" intensity="0.8" castShadow="false"></a-light>
-    <a-light type="hemisphere" intensity="0.4" groundColor="#333" color="#fff"></a-light>
+    <a-light type="directional" position="1 4 2" intensity="0.7"></a-light>
 
     <a-entity mindar-image-target="targetIndex: 0">
-      <a-entity
-        position="0 0 0"
-        rotation="90 0 0" 
-        scale="0.18 0.18 0.18">
-        
+      <a-entity rotation="90 60 0" scale="0.19 0.19 0.19">
         <a-gltf-model
           src="#sculpture"
-          animation-mixer="clip: *; loop: repeat;">
+          animation-mixer>
         </a-gltf-model>
-        
       </a-entity>
     </a-entity>
 
@@ -153,35 +111,19 @@
   <script>
     const startBtn = document.getElementById('start-btn');
     const overlay = document.getElementById('overlay');
-    const scanInfo = document.getElementById('scanning-overlay');
     const sceneEl = document.querySelector('a-scene');
 
-    // Prevent scrolling on mobile
-    document.body.addEventListener('touchmove', e => e.preventDefault(), { passive: false });
-
     startBtn.addEventListener('click', () => {
-      // Immediate feedback: Hide landing UI
       overlay.classList.add('hidden');
-      scanInfo.style.display = 'block';
-
-      // Initialize MindAR
+      
+      // Start the AR engine
       if (sceneEl.hasLoaded) {
         sceneEl.systems["mindar-image-system"].start();
       } else {
         sceneEl.addEventListener("renderstart", () => {
           sceneEl.systems["mindar-image-system"].start();
-        }, { once: true });
+        });
       }
-    });
-
-    // Interaction when target is found
-    sceneEl.addEventListener("targetFound", () => {
-      scanInfo.style.display = 'none';
-      console.log("Foundations sculpture tracked.");
-    });
-
-    sceneEl.addEventListener("targetLost", () => {
-      scanInfo.style.display = 'block';
     });
   </script>
 
