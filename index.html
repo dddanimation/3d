@@ -1,13 +1,15 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+  <meta charset="UTF-8">
   <meta name="viewport"
         content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
   <title>Foundations AR</title>
 
-  <!-- A-Frame + MindAR -->
   <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
+  
+  <script src="https://cdn.jsdelivr.net/gh/donmccurdy/aframe-extras@v7.2.0/dist/aframe-extras.min.js"></script>
 
   <style>
     html, body {
@@ -16,7 +18,7 @@
       width: 100%;
       height: 100%;
       overflow: hidden;
-      background: transparent !important;
+      background: #000;
       touch-action: none;
     }
 
@@ -30,37 +32,60 @@
       justify-content: center;
       align-items: center;
       z-index: 9999;
-      font-family: sans-serif;
-      transition: opacity 0.6s ease;
+      font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+      transition: opacity 0.8s ease, visibility 0.8s;
+    }
+
+    #overlay.hidden {
+      opacity: 0;
+      visibility: hidden;
+      pointer-events: none;
     }
 
     #overlay h1 {
-      letter-spacing: 3px;
+      letter-spacing: 4px;
       font-weight: 300;
       margin-bottom: 25px;
-    }
-
-    #marker-preview {
-      width: 150px;
-      border: 1px solid #444;
-      margin-bottom: 25px;
-    }
-
-    #start-btn {
-      padding: 18px 40px;
-      font-size: 18px;
-      background: #fff;
-      color: #000;
-      border: none;
-      border-radius: 4px;
-      cursor: pointer;
-      font-weight: bold;
       text-transform: uppercase;
     }
 
+    #marker-preview {
+      width: 180px;
+      border: 1px solid #444;
+      margin-bottom: 30px;
+      border-radius: 4px;
+    }
+
+    #start-btn {
+      padding: 16px 36px;
+      font-size: 16px;
+      background: #fff;
+      color: #000;
+      border: none;
+      border-radius: 2px;
+      cursor: pointer;
+      font-weight: bold;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+    }
+
+    /* Scanning indicator */
+    #scanning-overlay {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      color: white;
+      font-family: sans-serif;
+      text-align: center;
+      z-index: 10;
+      pointer-events: none;
+      opacity: 0.7;
+      display: none;
+    }
+
     /* Hide MindAR default UI */
-    .mindar-ui-scanning,
-    .mindar-ui-loading {
+    .mindar-ui-scanning, .mindar-ui-loading {
       display: none !important;
     }
   </style>
@@ -68,16 +93,16 @@
 
 <body>
 
-  <!-- Intro Overlay -->
   <div id="overlay">
     <h1>FOUNDATIONS</h1>
     <img id="marker-preview"
          src="https://dddanimation.github.io/3d/enslaved.jpg"
-         alt="Marker preview">
+         alt="Point camera at this marker">
     <button id="start-btn">Enter Experience</button>
   </div>
 
-  <!-- AR Scene -->
+  <div id="scanning-overlay">Scanning for marker...</div>
+
   <a-scene
     mindar-image="
       imageTargetSrc: https://dddanimation.github.io/3d/targets.mind;
@@ -91,61 +116,55 @@
     renderer="
       colorManagement: true;
       physicallyCorrectLights: true;
-      alpha: true;
-      precision: mediump;
-      antialias: false;
+      exposure: 0.85; 
+      toneMapping: ACESFilmic;
+      antialias: true;
     "
     color-space="sRGB"
     vr-mode-ui="enabled: false"
     device-orientation-permission-ui="enabled: false">
 
-    <a-assets crossorigin="anonymous">
-      <a-asset-item
-        id="sculpture"
-        src="https://dddanimation.github.io/3d/enslaved.glb">
-      </a-asset-item>
+    <a-assets>
+      <a-asset-item id="sculpture" src="https://dddanimation.github.io/3d/enslaved.glb"></a-asset-item>
     </a-assets>
 
-    <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
+    <a-camera position="0 0 0" look-controls="enabled: false" cursor="fuse: false; rayOrigin: mouse;"></a-camera>
 
-    <!-- Lighting -->
-    <a-light type="ambient" intensity="0.35"></a-light>
-    <a-light type="directional" position="0 3 1" intensity="0.9"></a-light>
-    <a-light type="hemisphere" intensity="0.3" groundColor="#222"></a-light>
+    <a-light type="ambient" intensity="0.2"></a-light>
+    <a-light type="directional" position="1 4 2" intensity="0.8" castShadow="false"></a-light>
+    <a-light type="hemisphere" intensity="0.4" groundColor="#333" color="#fff"></a-light>
 
-    <!-- Target -->
     <a-entity mindar-image-target="targetIndex: 0">
-      <!-- Stabilization container -->
       <a-entity
         position="0 0 0"
-        rotation="90 0 0"
+        rotation="90 0 0" 
         scale="0.19 0.19 0.19">
+        
         <a-gltf-model
           src="#sculpture"
-          animation-mixer>
+          animation-mixer="clip: *; loop: repeat;">
         </a-gltf-model>
+        
       </a-entity>
     </a-entity>
 
   </a-scene>
 
-  <!-- Logic -->
   <script>
     const startBtn = document.getElementById('start-btn');
     const overlay = document.getElementById('overlay');
+    const scanInfo = document.getElementById('scanning-overlay');
     const sceneEl = document.querySelector('a-scene');
 
-    // Prevent mobile scroll / rubber band
-    document.body.addEventListener(
-      'touchmove',
-      e => e.preventDefault(),
-      { passive: false }
-    );
+    // Prevent scrolling on mobile
+    document.body.addEventListener('touchmove', e => e.preventDefault(), { passive: false });
 
-    // Safe AR start
     startBtn.addEventListener('click', () => {
-      document.body.style.backgroundColor = "transparent";
+      // Immediate feedback: Hide landing UI
+      overlay.classList.add('hidden');
+      scanInfo.style.display = 'block';
 
+      // Initialize MindAR
       if (sceneEl.hasLoaded) {
         sceneEl.systems["mindar-image-system"].start();
       } else {
@@ -155,14 +174,14 @@
       }
     });
 
-    // Hide overlay only after first successful target detection
-    let entered = false;
+    // Interaction when target is found
     sceneEl.addEventListener("targetFound", () => {
-      if (!entered) {
-        overlay.style.opacity = "0";
-        overlay.style.pointerEvents = "none";
-        entered = true;
-      }
+      scanInfo.style.display = 'none';
+      console.log("Foundations sculpture tracked.");
+    });
+
+    sceneEl.addEventListener("targetLost", () => {
+      scanInfo.style.display = 'block';
     });
   </script>
 
