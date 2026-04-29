@@ -2,7 +2,7 @@
 <html>
 <head>
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
-  <title>FOUDATION</title>
+  <title></title>
 
   <link rel="preload" href="https://dddanimation.github.io/3d/enslaved.glb" as="fetch" crossorigin="anonymous">
   <link rel="preload" href="https://dddanimation.github.io/3d/enslaved.mp3" as="fetch" crossorigin="anonymous">
@@ -105,6 +105,42 @@
 
     .a-enter-vr, .a-enter-ar, .a-orientation-modal { display: none !important; }
   </style>
+
+  <script>
+    // ── SMOOTH-LERP COMPONENT ──────────────────────────────────────────────
+    // Second smoothing layer on top of MindAR's one-euro filter.
+    // Lerps position and slerps rotation each frame to damp out the
+    // high-frequency micro-jitter that survives the tracker filter.
+    // Lower alpha = smoother (but slight lag). Higher = snappier (more jitter).
+    AFRAME.registerComponent('smooth-lerp', {
+      schema: {
+        positionAlpha: { type: 'number', default: 0.15 },
+        rotationAlpha: { type: 'number', default: 0.15 }
+      },
+      init() {
+        this.smoothPos  = new THREE.Vector3();
+        this.smoothQuat = new THREE.Quaternion();
+        this.initialized = false;
+      },
+      tick() {
+        const obj = this.el.object3D;
+        if (!this.initialized) {
+          this.smoothPos.copy(obj.position);
+          this.smoothQuat.copy(obj.quaternion);
+          this.initialized = true;
+          return;
+        }
+        if (!this.el.getAttribute('visible')) {
+          this.initialized = false;
+          return;
+        }
+        this.smoothPos.lerp(obj.position, this.data.positionAlpha);
+        this.smoothQuat.slerp(obj.quaternion, this.data.rotationAlpha);
+        obj.position.copy(this.smoothPos);
+        obj.quaternion.copy(this.smoothQuat);
+      }
+    });
+  </script>
 </head>
 <body class="loading-bg">
 
@@ -118,7 +154,7 @@
   <div id="scan-hint">Point camera at artwork</div>
 
   <div id="overlay">FOUDATION
-    <h1 style="letter-spacing: 5px; font-weight: 300; margin-bottom: 5px;">EBONY</h1>
+    <h1 style="letter-spacing: 5px; font-weight: 300; margin-bottom: 5px;">FOUNDATION</h1>
     <p style="font-size: 10px; letter-spacing: 2px; text-transform: uppercase; margin-top: 0; margin-bottom: 30px; opacity: 0.6;">By Qrcky</p>
 
     <div id="status-container">
@@ -140,12 +176,8 @@
     <a href="https://www.qrcky.net/prints/" target="_blank" class="black-btn">Get Prints</a>
   </div>
 
-  <!--
-    JITTER FIX: filterMinCF and filterBeta both lowered to 0.001
-    (was 0.005 / 0.05) — tighter one-euro filter = much smoother tracking
-  -->
   <a-scene
-    mindar-image="imageTargetSrc: https://dddanimation.github.io/3d/targets.mind; autoStart: false; uiScanning: false; uiLoading: false; maxTrack: 1; filterMinCF: 0.001; filterBeta: 0.001;"
+    mindar-image="imageTargetSrc: https://dddanimation.github.io/3d/targets.mind; autoStart: false; uiScanning: false; uiLoading: false; maxTrack: 1; filterMinCF: 0.001; filterBeta: 0.001; warmupTolerance: 5; missTolerance: 10;"
     color-space="sRGB"
     renderer="colorManagement: true; physicallyCorrectLights: true; alpha: true"
     vr-mode-ui="enabled: false"
@@ -160,21 +192,20 @@
     <a-light type="ambient" intensity="1.2"></a-light>
     <a-light type="directional" intensity="0.8" position="1 2 1"></a-light>
 
-    <a-entity mindar-image-target="targetIndex: 0" id="mural-target">
-      <!--
-        ROTATION FIX: model sits flat on the marker plane (rotation="90 0 0"
-        tilts it upright relative to the marker). The spin animation now
-        rotates around the Y axis — "from: 90 0 0; to: 90 360 0" — so it
-        spins on the vertical axis as expected, not barrel-rolling on Z.
-      -->
+    <a-entity
+      mindar-image-target="targetIndex: 0"
+      smooth-lerp="positionAlpha: 0.15; rotationAlpha: 0.15"
+      id="mural-target">
+
+      <!-- Animation removed. rotation="90 0 0" tilts model upright on marker plane. -->
       <a-gltf-model
         src="#sculpture"
         position="0.0 0.0 0.0"
         scale="0.14 0.14 0.14"
         rotation="90 0 0"
-        animation-mixer
-        animation="property: rotation; from: 90 0 0; to: 90 360 0; loop: true; dur: 82000; easing: linear">
+        animation-mixer>
       </a-gltf-model>
+
     </a-entity>
 
   </a-scene>
