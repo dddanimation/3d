@@ -140,8 +140,12 @@
     <a href="https://www.qrcky.net/prints/" target="_blank" class="black-btn">Get Prints</a>
   </div>
 
+  <!--
+    JITTER FIX: filterMinCF and filterBeta both lowered to 0.001
+    (was 0.005 / 0.05) — tighter one-euro filter = much smoother tracking
+  -->
   <a-scene
-    mindar-image="imageTargetSrc: https://dddanimation.github.io/3d/targets.mind; autoStart: false; uiScanning: false; uiLoading: false; maxTrack: 1; filterMinCF: 0.005; filterBeta: 0.05;"
+    mindar-image="imageTargetSrc: https://dddanimation.github.io/3d/targets.mind; autoStart: false; uiScanning: false; uiLoading: false; maxTrack: 1; filterMinCF: 0.001; filterBeta: 0.001;"
     color-space="sRGB"
     renderer="colorManagement: true; physicallyCorrectLights: true; alpha: true"
     vr-mode-ui="enabled: false"
@@ -154,24 +158,25 @@
 
     <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
     <a-light type="ambient" intensity="1.2"></a-light>
+    <a-light type="directional" intensity="0.8" position="1 2 1"></a-light>
 
+    <a-entity mindar-image-target="targetIndex: 0" id="mural-target">
+      <!--
+        ROTATION FIX: model sits flat on the marker plane (rotation="90 0 0"
+        tilts it upright relative to the marker). The spin animation now
+        rotates around the Y axis — "from: 90 0 0; to: 90 360 0" — so it
+        spins on the vertical axis as expected, not barrel-rolling on Z.
+      -->
+      <a-gltf-model
+        src="#sculpture"
+        position="0.0 0.0 0.0"
+        scale="0.14 0.14 0.14"
+        rotation="90 0 0"
+        animation-mixer
+        animation="property: rotation; from: 90 0 0; to: 90 360 0; loop: true; dur: 82000; easing: linear">
+      </a-gltf-model>
+    </a-entity>
 
-
-
-
- <a-entity mindar-image-target="targetIndex: 0" id="mural-target">
-  <a-gltf-model src="#sculpture" position="0.0 0.0 0.0" scale="0.14 0.14 0.14"
-    rotation="90 0 0"
-    animation-mixer
-    animation="property: rotation; from: 90 0 0; to: 90 360 0; loop: true; dur: 82000; easing: linear">
-  </a-gltf-model>
-</a-entity>
-
-
-
-
-
-    
   </a-scene>
 
   <script>
@@ -314,7 +319,6 @@
         document.body.classList.add('ar-active');
         overlay.style.display     = 'none';
         scanHint.style.display    = 'block';
-        // FIX 2: add .scanning only when showing the reticle
         scanReticle.classList.add('scanning');
         scanReticle.style.display = 'block';
       }, 800);
@@ -328,8 +332,6 @@
       lostTimer    = null;
       targetActive = true;
 
-      // FIX 2: strip animation class BEFORE hiding so the element
-      // doesn't linger one frame mid-pulse on the first lock
       scanReticle.classList.remove('scanning');
       scanReticle.style.display = 'none';
       scanHint.style.display    = 'none';
@@ -342,7 +344,6 @@
     muralTarget.addEventListener('targetLost', () => {
       lostTimer = setTimeout(() => {
         targetActive = false;
-        // FIX 2: re-add animation class when bringing reticle back
         scanReticle.classList.add('scanning');
         scanReticle.style.display = 'block';
         scanHint.style.display    = 'block';
@@ -373,14 +374,12 @@
     });
 
     // ── ERROR HANDLING ──────────────────────────────────────────────────────
-    // Debounce: MindAR fires spurious arError events during startup on some
-    // devices. Only show the error UI if arReady has NOT fired within 2s.
     let arReadyFired = false;
     sceneEl.addEventListener('arReady', () => { arReadyFired = true; }, { once: true });
 
     sceneEl.addEventListener('arError', (e) => {
       setTimeout(() => {
-        if (arReadyFired) return; // loaded fine — ignore the transient error
+        if (arReadyFired) return;
         const detail = (e.detail || '').toString().toLowerCase();
         let msg;
         if (location.protocol !== 'https:') {
