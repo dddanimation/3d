@@ -4,7 +4,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
   <title>FOUDATION</title>
 
-  <!-- Preload heavy assets early so browser fetches them in parallel -->
   <link rel="preload" href="https://dddanimation.github.io/3d/enslaved.glb" as="fetch" crossorigin="anonymous">
   <link rel="preload" href="https://dddanimation.github.io/3d/enslaved.mp3" as="fetch" crossorigin="anonymous">
 
@@ -109,8 +108,7 @@
 </head>
 <body class="loading-bg">
 
-  <!-- Animated corner-bracket reticle shown while scanning -->
-  <div id="scan-reticle" class="scanning">
+  <div id="scan-reticle">
     <div class="corner tl"></div>
     <div class="corner tr"></div>
     <div class="corner bl"></div>
@@ -142,8 +140,9 @@
     <a href="https://www.qrcky.net/prints/" target="_blank" class="black-btn">Get Prints</a>
   </div>
 
+  <!-- FIX 1: filterMinCF raised to 0.1, filterBeta raised to 0.01 for stable, smooth tracking -->
   <a-scene
-    mindar-image="imageTargetSrc: https://dddanimation.github.io/3d/targets.mind; autoStart: false; uiScanning: false; uiLoading: false; maxTrack: 1; filterMinCF: 0.001; filterBeta: 0.001;"
+    mindar-image="imageTargetSrc: https://dddanimation.github.io/3d/targets.mind; autoStart: false; uiScanning: false; uiLoading: false; maxTrack: 1; filterMinCF: 0.1; filterBeta: 0.01;"
     color-space="sRGB"
     renderer="colorManagement: true; physicallyCorrectLights: true; alpha: true"
     vr-mode-ui="enabled: false"
@@ -151,7 +150,6 @@
 
     <a-assets timeout="30000">
       <a-asset-item id="sculpture" src="https://dddanimation.github.io/3d/enslaved.glb" crossorigin="anonymous"></a-asset-item>
-      <!-- preload="auto" buffers audio during the loading phase -->
       <audio id="audio-file" src="https://dddanimation.github.io/3d/enslaved.mp3" preload="auto" crossorigin="anonymous" loop></audio>
     </a-assets>
 
@@ -182,15 +180,11 @@
     let targetActive      = false;
     let userNavigatedAway = false;
 
-    // ── AUDIO: single source of truth ──────────────────────────────────────
-    // All play/pause flows through setAudioPlaying(). Volume fades via Web
-    // Audio API so transitions are never abrupt. Falls back gracefully if
-    // Web Audio is unavailable.
-
-    let audioCtx    = null;
-    let gainNode    = null;
-    let fadeRaf     = null;
-    const FADE_MS   = 600;
+    // ── AUDIO ───────────────────────────────────────────────────────────────
+    let audioCtx  = null;
+    let gainNode  = null;
+    let fadeRaf   = null;
+    const FADE_MS = 600;
 
     function ensureAudioGraph() {
       if (audioCtx) return;
@@ -201,7 +195,7 @@
         gainNode.connect(audioCtx.destination);
         audioCtx.createMediaElementSource(audioEl).connect(gainNode);
       } catch (e) {
-        audioCtx = null; // Web Audio not available — fall back to direct play
+        audioCtx = null;
       }
     }
 
@@ -217,8 +211,7 @@
       const delta    = targetVol - startVol;
 
       function step(now) {
-        const t = Math.min(1, (now - start) / FADE_MS);
-        // Ease in-out cubic
+        const t    = Math.min(1, (now - start) / FADE_MS);
         const ease = t < 0.5 ? 4*t*t*t : 1 - Math.pow(-2*t+2, 3)/2;
         gainNode.gain.value = startVol + delta * ease;
         if (t < 1) {
@@ -238,7 +231,7 @@
       fadeTo(shouldPlay ? 1 : 0);
     }
 
-    // ── AUDIO UNLOCK on first gesture (critical for iOS) ───────────────────
+    // ── AUDIO UNLOCK ────────────────────────────────────────────────────────
     function unlockAudio() {
       try {
         const Ctx = window.AudioContext || window.webkitAudioContext;
@@ -259,13 +252,9 @@
         renderProgress(simProgress);
       }, 120);
 
-      // 30s hard timeout with retry option
       loadTimeout = setTimeout(() => {
         clearInterval(simInterval);
-        showError(
-          'Taking too long to load.<br>Check your connection or camera permissions.',
-          true
-        );
+        showError('Taking too long to load.<br>Check your connection or camera permissions.', true);
       }, 30000);
     }
 
@@ -311,35 +300,38 @@
       setTimeout(() => {
         document.body.classList.remove('loading-bg');
         document.body.classList.add('ar-active');
-        overlay.style.display         = 'none';
-        scanHint.style.display        = 'block';
-        scanReticle.style.display     = 'block';
+        overlay.style.display     = 'none';
+        scanHint.style.display    = 'block';
+        // FIX 2: add .scanning only when showing the reticle
+        scanReticle.classList.add('scanning');
+        scanReticle.style.display = 'block';
       }, 800);
     });
 
     // ── TARGET FOUND / LOST ─────────────────────────────────────────────────
-    // A 1.5s grace period on lost prevents audio cutting out on brief
-    // tracking drops caused by hand movement or glare.
-
     let lostTimer = null;
 
     muralTarget.addEventListener('targetFound', () => {
       clearTimeout(lostTimer);
-      lostTimer     = null;
-      targetActive  = true;
+      lostTimer    = null;
+      targetActive = true;
 
+      // FIX 2: strip animation class BEFORE hiding so the element
+      // doesn't linger one frame mid-pulse on the first lock
+      scanReticle.classList.remove('scanning');
       scanReticle.style.display = 'none';
       scanHint.style.display    = 'none';
       uiControls.style.display  = 'flex';
 
-      if (navigator.vibrate) navigator.vibrate(80); // haptic confirmation
-
+      if (navigator.vibrate) navigator.vibrate(80);
       setAudioPlaying(true);
     });
 
     muralTarget.addEventListener('targetLost', () => {
       lostTimer = setTimeout(() => {
         targetActive = false;
+        // FIX 2: re-add animation class when bringing reticle back
+        scanReticle.classList.add('scanning');
         scanReticle.style.display = 'block';
         scanHint.style.display    = 'block';
         uiControls.style.display  = 'none';
@@ -355,14 +347,14 @@
       });
     });
 
-    // ── VISIBILITY (visibilitychange only — no blur/focus duplication) ──────
+    // ── VISIBILITY ──────────────────────────────────────────────────────────
     document.addEventListener('visibilitychange', () => {
       if (document.hidden) {
         setAudioPlaying(false);
       } else {
         if (userNavigatedAway) {
           userNavigatedAway = false;
-          return; // Intentional navigation — don't auto-resume
+          return;
         }
         if (targetActive) setAudioPlaying(true);
       }
