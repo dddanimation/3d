@@ -140,9 +140,8 @@
     <a href="https://www.qrcky.net/prints/" target="_blank" class="black-btn">Get Prints</a>
   </div>
 
-  <!-- FIX 1: filterMinCF raised to 0.1, filterBeta raised to 0.01 for stable, smooth tracking -->
   <a-scene
-    mindar-image="imageTargetSrc: https://dddanimation.github.io/3d/targets.mind; autoStart: false; uiScanning: false; uiLoading: false; maxTrack: 1; filterMinCF: 0.1; filterBeta: 0.01;"
+    mindar-image="imageTargetSrc: https://dddanimation.github.io/3d/targets.mind; autoStart: false; uiScanning: false; uiLoading: false; maxTrack: 1; filterMinCF: 0.005; filterBeta: 0.05;"
     color-space="sRGB"
     renderer="colorManagement: true; physicallyCorrectLights: true; alpha: true"
     vr-mode-ui="enabled: false"
@@ -361,19 +360,27 @@
     });
 
     // ── ERROR HANDLING ──────────────────────────────────────────────────────
+    // Debounce: MindAR fires spurious arError events during startup on some
+    // devices. Only show the error UI if arReady has NOT fired within 2s.
+    let arReadyFired = false;
+    sceneEl.addEventListener('arReady', () => { arReadyFired = true; }, { once: true });
+
     sceneEl.addEventListener('arError', (e) => {
-      const detail = (e.detail || '').toString().toLowerCase();
-      let msg;
-      if (location.protocol !== 'https:') {
-        msg = 'HTTPS is required for camera access.<br>Please open this page over a secure connection.';
-      } else if (detail.includes('permission') || detail.includes('denied')) {
-        msg = 'Camera permission was denied.<br>Allow camera access in your browser settings, then refresh.';
-      } else if (detail.includes('support') || detail.includes('webkit')) {
-        msg = 'Your browser may not support WebAR.<br>Try opening in Chrome or Safari.';
-      } else {
-        msg = 'Could not start the camera.<br>Please refresh and allow camera access.';
-      }
-      showError(msg, true);
+      setTimeout(() => {
+        if (arReadyFired) return; // loaded fine — ignore the transient error
+        const detail = (e.detail || '').toString().toLowerCase();
+        let msg;
+        if (location.protocol !== 'https:') {
+          msg = 'HTTPS is required for camera access.<br>Please open this page over a secure connection.';
+        } else if (detail.includes('permission') || detail.includes('denied')) {
+          msg = 'Camera permission was denied.<br>Allow camera access in your browser settings, then refresh.';
+        } else if (detail.includes('support') || detail.includes('webkit')) {
+          msg = 'Your browser may not support WebAR.<br>Try opening in Chrome or Safari.';
+        } else {
+          msg = 'Could not start the camera.<br>Please refresh and allow camera access.';
+        }
+        showError(msg, true);
+      }, 2000);
     });
 
     function showError(html, showRetry = false) {
