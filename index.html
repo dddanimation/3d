@@ -18,7 +18,6 @@
     body.ar-active  { background: transparent !important; }
     a-scene { background: transparent !important; }
 
-    /* ── OVERLAY ── */
     #overlay {
       position: fixed; top: 0; left: 0; width: 100%; height: 100%;
       background: #000; color: white; display: flex; flex-direction: column;
@@ -59,7 +58,6 @@
       font-weight: bold; text-transform: uppercase; letter-spacing: 1px;
     }
 
-    /* ── SCAN RETICLE ── */
     #scan-reticle {
       position: fixed; top: 50%; left: 50%;
       transform: translate(-50%, -50%);
@@ -81,7 +79,6 @@
     }
     #scan-reticle.scanning { animation: reticle-pulse 1.8s ease-in-out infinite; }
 
-    /* ── SCAN HINT ── */
     #scan-hint {
       position: fixed; bottom: 120px; width: 100%; text-align: center;
       color: #fff; text-shadow: 0 1px 4px rgba(0,0,0,0.8);
@@ -90,7 +87,6 @@
       z-index: 1000; display: none; font-weight: bold; pointer-events: none;
     }
 
-    /* ── UI BUTTONS ── */
     #ui-controls {
       position: fixed; bottom: 40px; left: 50%; transform: translateX(-50%);
       display: none; gap: 15px; z-index: 1000; width: 90%; justify-content: center;
@@ -107,11 +103,6 @@
   </style>
 
   <script>
-    // ── SMOOTH-LERP COMPONENT ──────────────────────────────────────────────
-    // Second smoothing layer on top of MindAR's one-euro filter.
-    // Lerps position and slerps rotation each frame to damp out the
-    // high-frequency micro-jitter that survives the tracker filter.
-    // Lower alpha = smoother (but slight lag). Higher = snappier (more jitter).
     AFRAME.registerComponent('smooth-lerp', {
       schema: {
         positionAlpha: { type: 'number', default: 0.15 },
@@ -197,13 +188,6 @@
       smooth-lerp="positionAlpha: 0.15; rotationAlpha: 0.15"
       id="mural-target">
 
-
-
-
-
-
-      
-      <!-- Animation removed. rotation="0 0 0" tilts model upright on marker plane. -->
       <a-gltf-model
         src="#sculpture"
         position="0.0 -0.08 0.0"
@@ -212,14 +196,6 @@
         animation-mixer>
       </a-gltf-model>
 
-
-
-
-
-
-
-
-      
     </a-entity>
 
   </a-scene>
@@ -242,7 +218,6 @@
     let targetActive      = false;
     let userNavigatedAway = false;
 
-    // ── AUDIO ───────────────────────────────────────────────────────────────
     let audioCtx  = null;
     let gainNode  = null;
     let fadeRaf   = null;
@@ -256,9 +231,7 @@
         gainNode.gain.value = 0;
         gainNode.connect(audioCtx.destination);
         audioCtx.createMediaElementSource(audioEl).connect(gainNode);
-      } catch (e) {
-        audioCtx = null;
-      }
+      } catch (e) { audioCtx = null; }
     }
 
     function fadeTo(targetVol) {
@@ -271,18 +244,13 @@
       const start    = performance.now();
       const startVol = gainNode.gain.value;
       const delta    = targetVol - startVol;
-
       function step(now) {
         const t    = Math.min(1, (now - start) / FADE_MS);
         const ease = t < 0.5 ? 4*t*t*t : 1 - Math.pow(-2*t+2, 3)/2;
         gainNode.gain.value = startVol + delta * ease;
-        if (t < 1) {
-          fadeRaf = requestAnimationFrame(step);
-        } else {
-          if (targetVol === 0) audioEl.pause();
-        }
+        if (t < 1) { fadeRaf = requestAnimationFrame(step); }
+        else { if (targetVol === 0) audioEl.pause(); }
       }
-
       if (targetVol > 0 && audioEl.paused) audioEl.play().catch(() => {});
       fadeRaf = requestAnimationFrame(step);
     }
@@ -293,7 +261,6 @@
       fadeTo(shouldPlay ? 1 : 0);
     }
 
-    // ── AUDIO UNLOCK ────────────────────────────────────────────────────────
     function unlockAudio() {
       try {
         const Ctx = window.AudioContext || window.webkitAudioContext;
@@ -303,7 +270,6 @@
       } catch (e) {}
     }
 
-    // ── SIMULATED PROGRESS ──────────────────────────────────────────────────
     let simProgress = 0;
     let simInterval = null;
     let loadTimeout = null;
@@ -313,7 +279,6 @@
         simProgress += (99 - simProgress) * 0.04;
         renderProgress(simProgress);
       }, 120);
-
       loadTimeout = setTimeout(() => {
         clearInterval(simInterval);
         showError('Taking too long to load.<br>Check your connection or camera permissions.', true);
@@ -333,30 +298,26 @@
       if (v > 60) status = 'LOADING MODEL...';
       if (v > 85) status = 'STARTING CAMERA...';
       if (v >= 100) status = 'READY';
-      progressText.innerText = `${status}  ${Math.round(v)}%`;
+      progressText.innerText = status + '  ' + Math.round(v) + '%';
     }
 
-    // ── START ───────────────────────────────────────────────────────────────
     startBtn.addEventListener('click', () => {
       unlockAudio();
       startBtn.style.display          = 'none';
       progressContainer.style.display = 'block';
       progressText.style.display      = 'block';
       startSimProgress();
-
       function startAR() {
         const mindAR = sceneEl.systems['mindar-image-system'];
         if (mindAR) mindAR.start();
         else showError('AR system failed to initialise. Please refresh.');
       }
-
       if (sceneEl.hasLoaded) startAR();
       else sceneEl.addEventListener('loaded', startAR, { once: true });
     });
 
     retryBtn.addEventListener('click', () => window.location.reload());
 
-    // ── CAMERA READY ────────────────────────────────────────────────────────
     sceneEl.addEventListener('arReady', () => {
       completeProgress();
       setTimeout(() => {
@@ -369,19 +330,16 @@
       }, 800);
     });
 
-    // ── TARGET FOUND / LOST ─────────────────────────────────────────────────
     let lostTimer = null;
 
     muralTarget.addEventListener('targetFound', () => {
       clearTimeout(lostTimer);
       lostTimer    = null;
       targetActive = true;
-
       scanReticle.classList.remove('scanning');
       scanReticle.style.display = 'none';
       scanHint.style.display    = 'none';
       uiControls.style.display  = 'flex';
-
       if (navigator.vibrate) navigator.vibrate(80);
       setAudioPlaying(true);
     });
@@ -397,7 +355,6 @@
       }, 1500);
     });
 
-    // ── BUTTON NAVIGATION ───────────────────────────────────────────────────
     document.querySelectorAll('.black-btn').forEach(btn => {
       btn.addEventListener('click', () => {
         userNavigatedAway = true;
@@ -405,20 +362,15 @@
       });
     });
 
-    // ── VISIBILITY ──────────────────────────────────────────────────────────
     document.addEventListener('visibilitychange', () => {
       if (document.hidden) {
         setAudioPlaying(false);
       } else {
-        if (userNavigatedAway) {
-          userNavigatedAway = false;
-          return;
-        }
+        if (userNavigatedAway) { userNavigatedAway = false; return; }
         if (targetActive) setAudioPlaying(true);
       }
     });
 
-    // ── ERROR HANDLING ──────────────────────────────────────────────────────
     let arReadyFired = false;
     sceneEl.addEventListener('arReady', () => { arReadyFired = true; }, { once: true });
 
