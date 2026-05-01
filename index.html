@@ -18,6 +18,7 @@
     body.ar-active  { background: transparent !important; }
     a-scene { background: transparent !important; }
 
+    /* ── OVERLAY ── */
     #overlay {
       position: fixed; top: 0; left: 0; width: 100%; height: 100%;
       background: #000; color: white; display: flex; flex-direction: column;
@@ -58,6 +59,7 @@
       font-weight: bold; text-transform: uppercase; letter-spacing: 1px;
     }
 
+    /* ── SCAN RETICLE ── */
     #scan-reticle {
       position: fixed; top: 50%; left: 50%;
       transform: translate(-50%, -50%);
@@ -79,6 +81,7 @@
     }
     #scan-reticle.scanning { animation: reticle-pulse 1.8s ease-in-out infinite; }
 
+    /* ── SCAN HINT ── */
     #scan-hint {
       position: fixed; bottom: 120px; width: 100%; text-align: center;
       color: #fff; text-shadow: 0 1px 4px rgba(0,0,0,0.8);
@@ -87,6 +90,7 @@
       z-index: 1000; display: none; font-weight: bold; pointer-events: none;
     }
 
+    /* ── UI BUTTONS ── */
     #ui-controls {
       position: fixed; bottom: 40px; left: 50%; transform: translateX(-50%);
       display: none; gap: 15px; z-index: 1000; width: 90%; justify-content: center;
@@ -188,29 +192,15 @@
       smooth-lerp="positionAlpha: 0.15; rotationAlpha: 0.15"
       id="mural-target">
 
+      <a-gltf-model
+        src="#sculpture"
+        position="0.0 -0.35 0.0"
+        scale="0.17 0.17 0.17"
+        rotation="0 0 0"
+        animation-mixer
+        animation="property: rotation; to: 0 360 0; loop: true; dur: 50000; easing: linear">
+      </a-gltf-model>
 
-      \
-
-
-
-
-
-      
-<a-gltf-model
-  src="#sculpture"
-  position="0.0 -0.35 0.0"
-  scale="0.17 0.17 0.17"
-  rotation="0 0 0"
-  animation-mixer
-  animation="property: rotation; to: 0 360 0; loop: true; dur: 50000; easing: linear">
-</a-gltf-model>
-
-
-
-
-
-
-      
     </a-entity>
 
   </a-scene>
@@ -233,6 +223,7 @@
     let targetActive      = false;
     let userNavigatedAway = false;
 
+    // ── AUDIO ───────────────────────────────────────────────────────────────
     let audioCtx  = null;
     let gainNode  = null;
     let fadeRaf   = null;
@@ -276,6 +267,7 @@
       fadeTo(shouldPlay ? 1 : 0);
     }
 
+    // ── AUDIO UNLOCK ────────────────────────────────────────────────────────
     function unlockAudio() {
       try {
         const Ctx = window.AudioContext || window.webkitAudioContext;
@@ -285,6 +277,7 @@
       } catch (e) {}
     }
 
+    // ── SIMULATED PROGRESS ──────────────────────────────────────────────────
     let simProgress = 0;
     let simInterval = null;
     let loadTimeout = null;
@@ -316,23 +309,27 @@
       progressText.innerText = status + '  ' + Math.round(v) + '%';
     }
 
+    // ── START ───────────────────────────────────────────────────────────────
     startBtn.addEventListener('click', () => {
       unlockAudio();
       startBtn.style.display          = 'none';
       progressContainer.style.display = 'block';
       progressText.style.display      = 'block';
       startSimProgress();
+
       function startAR() {
         const mindAR = sceneEl.systems['mindar-image-system'];
         if (mindAR) mindAR.start();
         else showError('AR system failed to initialise. Please refresh.');
       }
+
       if (sceneEl.hasLoaded) startAR();
       else sceneEl.addEventListener('loaded', startAR, { once: true });
     });
 
     retryBtn.addEventListener('click', () => window.location.reload());
 
+    // ── CAMERA READY ────────────────────────────────────────────────────────
     sceneEl.addEventListener('arReady', () => {
       completeProgress();
       setTimeout(() => {
@@ -345,31 +342,38 @@
       }, 800);
     });
 
+    // ── TARGET FOUND / LOST ─────────────────────────────────────────────────
     let lostTimer = null;
 
     muralTarget.addEventListener('targetFound', () => {
       clearTimeout(lostTimer);
       lostTimer    = null;
       targetActive = true;
+
       scanReticle.classList.remove('scanning');
       scanReticle.style.display = 'none';
       scanHint.style.display    = 'none';
       uiControls.style.display  = 'flex';
+
       if (navigator.vibrate) navigator.vibrate(80);
       setAudioPlaying(true);
     });
 
     muralTarget.addEventListener('targetLost', () => {
+      clearTimeout(lostTimer);
       lostTimer = setTimeout(() => {
         targetActive = false;
+
         scanReticle.classList.add('scanning');
         scanReticle.style.display = 'block';
         scanHint.style.display    = 'block';
         uiControls.style.display  = 'none';
+
         setAudioPlaying(false);
-      }, 1500);
+      }, 800);
     });
 
+    // ── BUTTON NAVIGATION ───────────────────────────────────────────────────
     document.querySelectorAll('.black-btn').forEach(btn => {
       btn.addEventListener('click', () => {
         userNavigatedAway = true;
@@ -377,6 +381,7 @@
       });
     });
 
+    // ── VISIBILITY ──────────────────────────────────────────────────────────
     document.addEventListener('visibilitychange', () => {
       if (document.hidden) {
         setAudioPlaying(false);
@@ -386,6 +391,7 @@
       }
     });
 
+    // ── ERROR HANDLING ──────────────────────────────────────────────────────
     let arReadyFired = false;
     sceneEl.addEventListener('arReady', () => { arReadyFired = true; }, { once: true });
 
