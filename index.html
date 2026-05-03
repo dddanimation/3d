@@ -4,13 +4,16 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
   <title></title>
   <link rel="preload" href="https://dddanimation.github.io/3d/enslaved.glb" as="fetch" crossorigin="anonymous">
+  <link rel="preload" href="https://dddanimation.github.io/3d/enslaved.mp3" as="fetch" crossorigin="anonymous">
   <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
   <script src="https://cdn.jsdelivr.net/gh/c-frame/aframe-extras@7.2.0/dist/aframe-extras.min.js"></script>
   <style>
     html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; }
     body.loading-bg { background: #000 !important; }
+    [body.ar](http://body.ar)-active  { background: transparent !important; }
     a-scene { background: transparent !important; }
+    /* ── OVERLAY ── */
     #overlay {
       position: fixed; top: 0; left: 0; width: 100%; height: 100%;
       background: #000; color: white; display: flex; flex-direction: column;
@@ -23,18 +26,7 @@
       text-transform: uppercase; letter-spacing: 1px;
     }
     #start-btn:disabled { background: #555; cursor: default; }
-    #marker-preview { width: 150px; border: 1px solid #444; margin-bottom: 25px; opacity: 0.8; }
-  </style>
-</head>
-<body class="loading-bg">
-
-  <div id="overlay">
-    <img id="marker-preview" src="YOUR_MARKER_PREVIEW.jpg" alt="Marker preview" />
-    <button id="start-btn">Start AR</button>
-  </div>
-
-  <a-scene
-    mindar-image="imageTargetSrc: YOUR_MIND_FILE.mind; autoStart: false;"
+    #marker-preview { width: 150px; border: 1px solid #444; margin-bottom: 25px; opacity: 0.8; }    mindar-image="imageTargetSrc: YOUR_MIND_FILE.mind; autoStart: false;"
     color-space="sRGB"
     renderer="colorManagement: true; physicallyCorrectLights: true"
     vr-mode-ui="enabled: false"
