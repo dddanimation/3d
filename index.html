@@ -6,7 +6,7 @@
 
   <link rel="preload" href="https://dddanimation.github.io/3d/enslaved.glb" as="fetch" crossorigin="anonymous">
   <link rel="preload" href="https://dddanimation.github.io/3d/enslaved.mp3" as="fetch" crossorigin="anonymous">
-preloadload
+
   <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
   <script src="https://cdn.jsdelivr.net/gh/c-frame/aframe-extras@7.2.0/dist/aframe-extras.min.js"></script>
@@ -90,7 +90,7 @@ preloadload
       z-index: 1000; display: none; font-weight: bold; pointer-events: none;
     }
 
-    /*UI─ UI BUTTONS ── */
+    /* ── UI BUTTONS ── */
     #ui-controls {
       position: fixed; bottom: 40px; left: 50%; transform: translateX(-50%);
       display: none; gap: 15px; z-index: 1000; width: 90%; justify-content: center;
@@ -231,7 +231,7 @@ preloadload
     const scanReticle       = document.getElementById('scan-reticle');
     const uiControls        = document.getElementById('ui-controls');
 
-    let activeTargets     = 0;   // count of how many targets are currently visible
+    let activeTargets     = 0;
     let userNavigatedAway = false;
 
     // ── AUDIO (iOS Safari-safe) ─────────────────────────────────────────────
@@ -244,6 +244,8 @@ preloadload
     //   4. On every subsequent touchend/click anywhere, re-resume the context
     //      because Safari can silently suspend it again (e.g. after a phone call,
     //      notification, or screen lock).
+    //   5. An entry chime is played synchronously on button tap to confirm
+    //      audio is unlocked and provide immediate feedback to the user.
     //
     let audioCtx    = null;
     let gainNode    = null;
@@ -254,7 +256,8 @@ preloadload
     const FADE_MS   = 600;
     const AUDIO_URL = 'https://dddanimation.github.io/3d/enslaved.mp3';
 
-    // Step 1 — called synchronously inside the button click
+    // Step 1 — called synchronously inside the button click.
+    // Also plays a two-tone entry chime to confirm audio unlock on iOS.
     function createAndUnlockContext() {
       if (audioCtx) return;
       try {
@@ -272,6 +275,30 @@ preloadload
         silentSrc.buffer = silent;
         silentSrc.connect(audioCtx.destination);
         silentSrc.start(0);
+
+        // ── ENTRY CHIME ──────────────────────────────────────────────────────
+        // A soft two-tone rise (A4 → E5) played immediately on button tap.
+        // Confirms the audio session is unlocked before the user enters AR.
+        // Stays entirely in the synchronous gesture stack — no async, no issues.
+        // Uses a separate gain node so it never interferes with the ambient audio.
+        const chimeGain = audioCtx.createGain();
+        chimeGain.connect(audioCtx.destination);
+
+        [440, 660].forEach((freq, i) => {
+          const osc = audioCtx.createOscillator();
+          osc.type = 'sine';
+          osc.frequency.value = freq;
+          osc.connect(chimeGain);
+
+          const t = audioCtx.currentTime + i * 0.12;
+          chimeGain.gain.setValueAtTime(0, t);
+          chimeGain.gain.linearRampToValueAtTime(0.18, t + 0.04);
+          chimeGain.gain.exponentialRampToValueAtTime(0.001, t + 0.35);
+
+          osc.start(t);
+          osc.stop(t + 0.35);
+        });
+        // ────────────────────────────────────────────────────────────────────
 
       } catch (e) {
         console.warn('AudioContext creation failed:', e);
@@ -295,7 +322,6 @@ preloadload
     }
 
     // Safari can suspend the context silently — re-resume on any user touch
-    // This is the key fix for Safari not playing after the initial unlock
     document.addEventListener('touchend', () => {
       if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
     }, { passive: true });
@@ -378,7 +404,8 @@ preloadload
 
     // ── START ───────────────────────────────────────────────────────────────
     startBtn.addEventListener('click', () => {
-      // iOS Safari FIX: unlock synchronously inside this click handler
+      // iOS Safari FIX: unlock synchronously inside this click handler.
+      // createAndUnlockContext() also plays the entry chime at this point.
       createAndUnlockContext();
       fetchAndDecodeAudio();
 
