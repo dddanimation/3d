@@ -236,51 +236,52 @@
 
     // ── AUDIO (iOS Safari-safe) ─────────────────────────────────────────────
     //
-    // Safari rules:
-    //   1. AudioContext must be created + resumed in the SYNCHRONOUS call stack
-    //      of a user gesture (click or touchend). Async/await breaks this.
-    //   2. A silent buffer played immediately fully unlocks the audio session.
-    //   3. After unlock, fetch+decode can be async.
-    //   4. On every subsequent touchend/click anywhere, re-resume the context
-    //      because Safari can silently suspend it again (e.g. after a phone call,
-    //      notification, or screen lock).
-    //   5. An entry chime is played synchronously on button tap to confirm
-    //      audio is unlocked and provide immediate feedback to the user.
+    // The Safari problem: fetch() is async, so by the time the MP3 is decoded
+    // we are outside the gesture call stack and Safari blocks playback.
     //
-    let audioCtx    = null;
-    let gainNode    = null;
-    let audioBuffer = null;
-    let audioSource = null;
-    let audioReady  = false;
-    let fadeRaf     = null;
-    const FADE_MS   = 600;
-    const AUDIO_URL = 'https://dddanimation.github.io/3d/enslaved.mp3';
+    // The solution: in the button tap we immediately start a SILENT LOOPING
+    // OSCILLATOR connected through the gainNode (at gain 0). This keeps the
+    // audio session alive and "playing" from within the gesture stack.
+    // When the MP3 finishes decoding we stop the oscillator and swap in the
+    // real BufferSourceNode — no new gesture needed, session is already open.
+    //
+    let audioCtx        = null;
+    let gainNode        = null;
+    let audioBuffer     = null;
+    let audioSource     = null;   // the real MP3 BufferSourceNode
+    let keepAliveOsc    = null;   // silent oscillator that holds the session open
+    let audioReady      = false;
+    let fadeRaf         = null;
+    const FADE_MS       = 600;
+    const AUDIO_URL     = 'https://dddanimation.github.io/3d/enslaved.mp3';
 
-    // Step 1 — called synchronously inside the button click.
-    // Also plays a two-tone entry chime to confirm audio unlock on iOS.
+    // Called synchronously inside the button click handler
     function createAndUnlockContext() {
       if (audioCtx) return;
       try {
         audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+        // Main gain node — all audio routes through this for fading
         gainNode = audioCtx.createGain();
         gainNode.gain.value = 0;
         gainNode.connect(audioCtx.destination);
 
-        // Both of these must stay in the synchronous gesture stack on iOS
+        // Must be synchronous in the gesture stack on iOS
         audioCtx.resume();
 
-        // Silent 1-sample buffer — fully activates the Safari audio session
-        const silent    = audioCtx.createBuffer(1, 1, 22050);
-        const silentSrc = audioCtx.createBufferSource();
-        silentSrc.buffer = silent;
-        silentSrc.connect(audioCtx.destination);
-        silentSrc.start(0);
+        // ── KEEP-ALIVE OSCILLATOR ──────────────────────────────────────────
+        // A silent 1Hz oscillator connected at gain 0. Safari sees a node
+        // actively playing from within the gesture stack and marks the audio
+        // session as user-initiated. We stop it once the real audio is ready.
+        keepAliveOsc = audioCtx.createOscillator();
+        keepAliveOsc.frequency.value = 1; // sub-audible, completely inaudible
+        keepAliveOsc.connect(gainNode);   // gain is 0, so truly silent
+        keepAliveOsc.start(0);
+        // ──────────────────────────────────────────────────────────────────
 
-        // ── ENTRY CHIME ──────────────────────────────────────────────────────
-        // A soft two-tone rise (A4 → E5) played immediately on button tap.
-        // Confirms the audio session is unlocked before the user enters AR.
-        // Stays entirely in the synchronous gesture stack — no async, no issues.
-        // Uses a separate gain node so it never interferes with the ambient audio.
+        // ── ENTRY CHIME ───────────────────────────────────────────────────
+        // Soft two-tone rise (A4 → E5) confirming audio unlock to the user.
+        // Uses its own gain node — completely independent of the main gainNode.
         const chimeGain = audioCtx.createGain();
         chimeGain.connect(audioCtx.destination);
 
@@ -298,7 +299,7 @@
           osc.start(t);
           osc.stop(t + 0.35);
         });
-        // ────────────────────────────────────────────────────────────────────
+        // ─────────────────────────────────────────────────────────────────
 
       } catch (e) {
         console.warn('AudioContext creation failed:', e);
@@ -306,7 +307,7 @@
       }
     }
 
-    // Step 2 — async fetch is safe now because the context is already unlocked
+    // Async fetch — safe because the context + session are already unlocked above
     async function fetchAndDecodeAudio() {
       if (!audioCtx || audioReady) return;
       try {
@@ -314,14 +315,23 @@
         const arrayBuf = await res.arrayBuffer();
         audioBuffer    = await audioCtx.decodeAudioData(arrayBuf);
         audioReady     = true;
-        // If a target is already visible by the time audio finishes loading, start playing
+
+        // Stop the keep-alive oscillator now that real audio is ready
+        if (keepAliveOsc) {
+          try { keepAliveOsc.stop(); } catch(e) {}
+          keepAliveOsc = null;
+        }
+
+        // If a target is already visible by the time decoding finishes, play now
         if (activeTargets > 0) setAudioPlaying(true);
+
       } catch (e) {
         console.warn('Audio decode failed:', e);
       }
     }
 
-    // Safari can suspend the context silently — re-resume on any user touch
+    // Safari silently suspends the context after interruptions (calls, lock screen)
+    // Re-resume on any touch/click so audio recovers automatically
     document.addEventListener('touchend', () => {
       if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
     }, { passive: true });
@@ -358,6 +368,7 @@
 
       if (shouldPlay) {
         if (!audioSource) {
+          // BufferSourceNodes are one-shot — always create a fresh one
           audioSource = audioCtx.createBufferSource();
           audioSource.buffer = audioBuffer;
           audioSource.loop   = true;
@@ -366,7 +377,7 @@
         }
         fadeTo(1);
       } else {
-        fadeTo(0);
+        fadeTo(0); // audioSource stopped inside fadeTo once gain reaches 0
       }
     }
 
@@ -404,8 +415,8 @@
 
     // ── START ───────────────────────────────────────────────────────────────
     startBtn.addEventListener('click', () => {
-      // iOS Safari FIX: unlock synchronously inside this click handler.
-      // createAndUnlockContext() also plays the entry chime at this point.
+      // iOS Safari FIX: unlock context + start keep-alive oscillator
+      // synchronously inside this click handler, then fetch MP3 async
       createAndUnlockContext();
       fetchAndDecodeAudio();
 
@@ -440,7 +451,7 @@
     });
 
     // ── TARGET FOUND / LOST ─────────────────────────────────────────────────
-    // Both targets share the same audio — audio plays when ANY target is visible,
+    // Both targets share the same audio — plays when ANY target is visible,
     // stops only when ALL targets are lost.
 
     let lostTimer = null;
@@ -463,7 +474,7 @@
       activeTargets = Math.max(0, activeTargets - 1);
       clearTimeout(lostTimer);
       lostTimer = setTimeout(() => {
-        if (activeTargets > 0) return; // another target is still visible
+        if (activeTargets > 0) return;
 
         scanReticle.classList.add('scanning');
         scanReticle.style.display = 'block';
