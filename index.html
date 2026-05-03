@@ -18,6 +18,32 @@
     body.ar-active  { background: transparent !important; }
     a-scene { background: transparent !important; }
 
+    /* ── SAFARI BANNER ── */
+    #safari-banner {
+      display: none;
+      position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+      background: #000; color: #fff;
+      flex-direction: column; justify-content: center; align-items: center;
+      z-index: 99999; font-family: sans-serif; text-align: center;
+      padding: 40px; box-sizing: border-box;
+    }
+    #safari-banner h2 {
+      font-weight: 300; letter-spacing: 4px; font-size: 18px; margin-bottom: 20px;
+    }
+    #safari-banner p {
+      font-size: 13px; line-height: 1.8; opacity: 0.75; max-width: 280px;
+      letter-spacing: 1px;
+    }
+    #safari-banner .safari-icon {
+      width: 64px; height: 64px; margin-bottom: 24px; opacity: 0.9;
+    }
+    #open-safari-btn {
+      margin-top: 30px; padding: 16px 36px; font-size: 14px;
+      background: #fff; color: #000; border: none; border-radius: 4px;
+      cursor: pointer; font-weight: bold; text-transform: uppercase;
+      letter-spacing: 2px;
+    }
+
     /* ── OVERLAY ── */
     #overlay {
       position: fixed; top: 0; left: 0; width: 100%; height: 100%;
@@ -139,6 +165,27 @@
 </head>
 <body class="loading-bg">
 
+  <!-- Shown when page is opened in QR scanner / in-app browser on iOS -->
+  <div id="safari-banner">
+    <svg class="safari-icon" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <circle cx="32" cy="32" r="30" stroke="white" stroke-width="2"/>
+      <circle cx="32" cy="32" r="2" fill="white"/>
+      <line x1="32" y1="8" x2="32" y2="14" stroke="white" stroke-width="2"/>
+      <line x1="32" y1="50" x2="32" y2="56" stroke="white" stroke-width="2"/>
+      <line x1="8" y1="32" x2="14" y2="32" stroke="white" stroke-width="2"/>
+      <line x1="50" y1="32" x2="56" y2="32" stroke="white" stroke-width="2"/>
+      <polygon points="38,20 26,38 32,32" fill="white" opacity="0.9"/>
+      <polygon points="26,44 38,26 32,32" fill="white" opacity="0.4"/>
+    </svg>
+    <h2>OPEN IN SAFARI</h2>
+    <p>For the full experience including audio, this page needs to open in Safari.</p>
+    <button id="open-safari-btn">Open in Safari</button>
+    <p style="margin-top: 20px; font-size: 11px; opacity: 0.4;">
+      Tap the button above, or tap<br>
+      the share icon ⎋ → "Open in Safari"
+    </p>
+  </div>
+
   <div id="scan-reticle">
     <div class="corner tl"></div>
     <div class="corner tr"></div>
@@ -186,7 +233,7 @@
     <a-light type="ambient" intensity="1.2"></a-light>
     <a-light type="directional" intensity="0.8" position="1 2 1"></a-light>
 
-    <!-- ── TARGET 0 ── adjust position/scale/rotation for this image -->
+    <!-- TARGET 0 — adjust position/scale/rotation for this image -->
     <a-entity
       mindar-image-target="targetIndex: 0"
       smooth-lerp="positionAlpha: 0.15; rotationAlpha: 0.15"
@@ -201,7 +248,7 @@
       </a-gltf-model>
     </a-entity>
 
-    <!-- ── TARGET 1 ── adjust position/scale/rotation for this image -->
+    <!-- TARGET 1 — adjust position/scale/rotation for this image -->
     <a-entity
       mindar-image-target="targetIndex: 1"
       smooth-lerp="positionAlpha: 0.15; rotationAlpha: 0.15"
@@ -219,6 +266,22 @@
   </a-scene>
 
   <script>
+    // ── IN-APP BROWSER DETECTION ────────────────────────────────────────────
+    (function() {
+      const ua = navigator.userAgent;
+      const isIOS = /iPhone|iPad|iPod/i.test(ua);
+      if (!isIOS) return;
+      const isFullSafari = /Safari\//.test(ua) && !/CriOS|FxiOS/.test(ua);
+      const isStandalone = window.navigator.standalone === true;
+      if (!isFullSafari && !isStandalone) {
+        document.getElementById('safari-banner').style.display = 'flex';
+        document.getElementById('open-safari-btn').addEventListener('click', () => {
+          window.location = 'x-web-search://?q=' + encodeURIComponent(window.location.href);
+          setTimeout(() => { window.location.href = window.location.href; }, 300);
+        });
+      }
+    })();
+
     const startBtn          = document.getElementById('start-btn');
     const retryBtn          = document.getElementById('retry-btn');
     const overlay           = document.getElementById('overlay');
@@ -234,151 +297,109 @@
     let activeTargets     = 0;
     let userNavigatedAway = false;
 
-    // ── AUDIO (iOS Safari-safe) ─────────────────────────────────────────────
-    //
-    // The Safari problem: fetch() is async, so by the time the MP3 is decoded
-    // we are outside the gesture call stack and Safari blocks playback.
-    //
-    // The solution: in the button tap we immediately start a SILENT LOOPING
-    // OSCILLATOR connected through the gainNode (at gain 0). This keeps the
-    // audio session alive and "playing" from within the gesture stack.
-    // When the MP3 finishes decoding we stop the oscillator and swap in the
-    // real BufferSourceNode — no new gesture needed, session is already open.
-    //
-    let audioCtx        = null;
-    let gainNode        = null;
-    let audioBuffer     = null;
-    let audioSource     = null;   // the real MP3 BufferSourceNode
-    let keepAliveOsc    = null;   // silent oscillator that holds the session open
-    let audioReady      = false;
-    let fadeRaf         = null;
-    const FADE_MS       = 600;
-    const AUDIO_URL     = 'https://dddanimation.github.io/3d/enslaved.mp3';
+    // ── AUDIO ───────────────────────────────────────────────────────────────
+    const AUDIO_URL = 'https://dddanimation.github.io/3d/enslaved.mp3';
+    const audioEl   = new Audio();
+    audioEl.src     = AUDIO_URL;
+    audioEl.loop    = true;
+    audioEl.preload = 'auto';
+    audioEl.setAttribute('playsinline', '');
+    audioEl.setAttribute('webkit-playsinline', '');
 
-    // Called synchronously inside the button click handler
-    function createAndUnlockContext() {
+    let audioCtx  = null;
+    let gainNode  = null;
+    let fadeRaf   = null;
+    const FADE_MS = 600;
+
+    function unlockAudio() {
       if (audioCtx) return;
       try {
-        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        // Play+pause synchronously in the gesture to unlock HTMLAudioElement on iOS
+        audioEl.play().then(() => {
+          audioEl.pause();
+          audioEl.currentTime = 0;
+        }).catch(() => {});
 
-        // Main gain node — all audio routes through this for fading
+        // Web Audio graph for fading
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
         gainNode = audioCtx.createGain();
         gainNode.gain.value = 0;
         gainNode.connect(audioCtx.destination);
-
-        // Must be synchronous in the gesture stack on iOS
+        audioCtx.createMediaElementSource(audioEl).connect(gainNode);
         audioCtx.resume();
 
-        // ── KEEP-ALIVE OSCILLATOR ──────────────────────────────────────────
-        // A silent 1Hz oscillator connected at gain 0. Safari sees a node
-        // actively playing from within the gesture stack and marks the audio
-        // session as user-initiated. We stop it once the real audio is ready.
-        keepAliveOsc = audioCtx.createOscillator();
-        keepAliveOsc.frequency.value = 1; // sub-audible, completely inaudible
-        keepAliveOsc.connect(gainNode);   // gain is 0, so truly silent
-        keepAliveOsc.start(0);
-        // ──────────────────────────────────────────────────────────────────
-
-        // ── ENTRY CHIME ───────────────────────────────────────────────────
-        // Soft two-tone rise (A4 → E5) confirming audio unlock to the user.
-        // Uses its own gain node — completely independent of the main gainNode.
+        // Entry chime confirms audio is working
         const chimeGain = audioCtx.createGain();
         chimeGain.connect(audioCtx.destination);
-
         [440, 660].forEach((freq, i) => {
           const osc = audioCtx.createOscillator();
           osc.type = 'sine';
           osc.frequency.value = freq;
           osc.connect(chimeGain);
-
           const t = audioCtx.currentTime + i * 0.12;
           chimeGain.gain.setValueAtTime(0, t);
           chimeGain.gain.linearRampToValueAtTime(0.18, t + 0.04);
           chimeGain.gain.exponentialRampToValueAtTime(0.001, t + 0.35);
-
           osc.start(t);
           osc.stop(t + 0.35);
         });
-        // ─────────────────────────────────────────────────────────────────
-
-      } catch (e) {
-        console.warn('AudioContext creation failed:', e);
+      } catch(e) {
+        console.warn('Audio setup failed, using fallback:', e);
         audioCtx = null;
       }
     }
 
-    // Async fetch — safe because the context + session are already unlocked above
-    async function fetchAndDecodeAudio() {
-      if (!audioCtx || audioReady) return;
-      try {
-        const res      = await fetch(AUDIO_URL);
-        const arrayBuf = await res.arrayBuffer();
-        audioBuffer    = await audioCtx.decodeAudioData(arrayBuf);
-        audioReady     = true;
-
-        // Stop the keep-alive oscillator now that real audio is ready
-        if (keepAliveOsc) {
-          try { keepAliveOsc.stop(); } catch(e) {}
-          keepAliveOsc = null;
-        }
-
-        // If a target is already visible by the time decoding finishes, play now
-        if (activeTargets > 0) setAudioPlaying(true);
-
-      } catch (e) {
-        console.warn('Audio decode failed:', e);
-      }
-    }
-
-    // Safari silently suspends the context after interruptions (calls, lock screen)
-    // Re-resume on any touch/click so audio recovers automatically
     document.addEventListener('touchend', () => {
-      if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
-    }, { passive: true });
-    document.addEventListener('click', () => {
       if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
     }, { passive: true });
 
     function fadeTo(targetVol) {
       cancelAnimationFrame(fadeRaf);
-      if (!gainNode) return;
-      const start    = performance.now();
-      const startVol = gainNode.gain.value;
-      const delta    = targetVol - startVol;
-
-      function step(now) {
-        const t    = Math.min(1, (now - start) / FADE_MS);
-        const ease = t < 0.5 ? 4*t*t*t : 1 - Math.pow(-2*t+2, 3)/2;
-        gainNode.gain.value = startVol + delta * ease;
-        if (t < 1) {
-          fadeRaf = requestAnimationFrame(step);
-        } else {
-          if (targetVol === 0 && audioSource) {
-            try { audioSource.stop(); } catch(e) {}
-            audioSource = null;
+      if (gainNode) {
+        const start    = performance.now();
+        const startVol = gainNode.gain.value;
+        const delta    = targetVol - startVol;
+        function step(now) {
+          const t    = Math.min(1, (now - start) / FADE_MS);
+          const ease = t < 0.5 ? 4*t*t*t : 1 - Math.pow(-2*t+2, 3)/2;
+          gainNode.gain.value = startVol + delta * ease;
+          if (t < 1) {
+            fadeRaf = requestAnimationFrame(step);
+          } else if (targetVol === 0) {
+            audioEl.pause();
           }
         }
+        if (targetVol > 0 && audioEl.paused) audioEl.play().catch(() => {});
+        fadeRaf = requestAnimationFrame(step);
+      } else {
+        // Plain HTMLAudioElement fallback
+        if (targetVol > 0) {
+          audioEl.volume = 0;
+          audioEl.play().catch(() => {});
+          const start = performance.now();
+          function stepVol(now) {
+            const t = Math.min(1, (now - start) / FADE_MS);
+            audioEl.volume = t;
+            if (t < 1) fadeRaf = requestAnimationFrame(stepVol);
+          }
+          fadeRaf = requestAnimationFrame(stepVol);
+        } else {
+          const start    = performance.now();
+          const startVol = audioEl.volume;
+          function stepVol(now) {
+            const t = Math.min(1, (now - start) / FADE_MS);
+            audioEl.volume = startVol * (1 - t);
+            if (t < 1) fadeRaf = requestAnimationFrame(stepVol);
+            else audioEl.pause();
+          }
+          fadeRaf = requestAnimationFrame(stepVol);
+        }
       }
-      fadeRaf = requestAnimationFrame(step);
     }
 
     function setAudioPlaying(shouldPlay) {
-      if (!audioCtx || !audioReady) return;
-      if (audioCtx.state === 'suspended') audioCtx.resume();
-
-      if (shouldPlay) {
-        if (!audioSource) {
-          // BufferSourceNodes are one-shot — always create a fresh one
-          audioSource = audioCtx.createBufferSource();
-          audioSource.buffer = audioBuffer;
-          audioSource.loop   = true;
-          audioSource.connect(gainNode);
-          audioSource.start(0);
-        }
-        fadeTo(1);
-      } else {
-        fadeTo(0); // audioSource stopped inside fadeTo once gain reaches 0
-      }
+      if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+      fadeTo(shouldPlay ? 1 : 0);
     }
 
     // ── SIMULATED PROGRESS ──────────────────────────────────────────────────
@@ -415,10 +436,7 @@
 
     // ── START ───────────────────────────────────────────────────────────────
     startBtn.addEventListener('click', () => {
-      // iOS Safari FIX: unlock context + start keep-alive oscillator
-      // synchronously inside this click handler, then fetch MP3 async
-      createAndUnlockContext();
-      fetchAndDecodeAudio();
+      unlockAudio();
 
       startBtn.style.display          = 'none';
       progressContainer.style.display = 'block';
@@ -451,21 +469,16 @@
     });
 
     // ── TARGET FOUND / LOST ─────────────────────────────────────────────────
-    // Both targets share the same audio — plays when ANY target is visible,
-    // stops only when ALL targets are lost.
-
     let lostTimer = null;
 
     function onTargetFound() {
       clearTimeout(lostTimer);
       lostTimer = null;
       activeTargets++;
-
       scanReticle.classList.remove('scanning');
       scanReticle.style.display = 'none';
       scanHint.style.display    = 'none';
       uiControls.style.display  = 'flex';
-
       if (navigator.vibrate) navigator.vibrate(80);
       setAudioPlaying(true);
     }
@@ -475,12 +488,10 @@
       clearTimeout(lostTimer);
       lostTimer = setTimeout(() => {
         if (activeTargets > 0) return;
-
         scanReticle.classList.add('scanning');
         scanReticle.style.display = 'block';
         scanHint.style.display    = 'block';
         uiControls.style.display  = 'none';
-
         setAudioPlaying(false);
       }, 1500);
     }
