@@ -180,7 +180,6 @@
 
     <a-assets timeout="30000">
       <a-asset-item id="sculpture" src="https://dddanimation.github.io/3d/enslaved.glb" crossorigin="anonymous"></a-asset-item>
-      <!-- FIX: removed <audio> element — audio is now handled entirely via Web Audio API -->
     </a-assets>
 
     <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
@@ -192,10 +191,22 @@
       smooth-lerp="positionAlpha: 0.15; rotationAlpha: 0.15"
       id="mural-target">
 
-      <!-- FIX: removed duplicate <a-gltf-model> that was in the original -->
+      <!-- Instance 1 — left of marker centre -->
+      <!-- Adjust position="X Y Z" to place where you need it -->
       <a-gltf-model
         src="#sculpture"
-        position="0.0 -0.35 0.0"
+        position="-0.3 -0.35 0.0"
+        scale="0.17 0.17 0.17"
+        rotation="0 0 0"
+        animation-mixer
+        animation="property: rotation; to: 0 360 0; loop: true; dur: 50000; easing: linear">
+      </a-gltf-model>
+
+      <!-- Instance 2 — right of marker centre -->
+      <!-- Adjust position="X Y Z" to place where you need it -->
+      <a-gltf-model
+        src="#sculpture"
+        position="0.3 -0.35 0.0"
         scale="0.17 0.17 0.17"
         rotation="0 0 0"
         animation-mixer
@@ -223,25 +234,22 @@
     let targetActive      = false;
     let userNavigatedAway = false;
 
-    // ── AUDIO (iOS-safe Web Audio API approach) ─────────────────────────────
+    // ── AUDIO (iOS-safe Web Audio API) ──────────────────────────────────────
     //
-    // iOS RULES:
-    //   1. AudioContext must be created AND resumed inside a direct user-gesture handler.
-    //   2. The same context must be reused for all subsequent playback — never closed.
-    //   3. HTMLAudioElement routed through that context inherits the unlock.
-    //   4. A silent buffer played at unlock time fully activates the audio session.
+    // iOS requires AudioContext to be created AND resumed inside a direct
+    // user-gesture call stack. We also play a silent buffer at unlock time
+    // to fully activate the audio session before any real audio is needed.
     //
-    let audioCtx      = null;
-    let gainNode      = null;
-    let audioBuffer   = null;   // decoded PCM of the MP3
-    let audioSource   = null;   // current BufferSourceNode
-    let audioReady    = false;
-    let fadeRaf       = null;
-    const FADE_MS     = 600;
-    const AUDIO_URL   = 'https://dddanimation.github.io/3d/enslaved.mp3';
+    let audioCtx    = null;
+    let gainNode    = null;
+    let audioBuffer = null;   // decoded PCM
+    let audioSource = null;   // current BufferSourceNode
+    let audioReady  = false;
+    let fadeRaf     = null;
+    const FADE_MS   = 600;
+    const AUDIO_URL = 'https://dddanimation.github.io/3d/enslaved.mp3';
 
-    // Called synchronously inside the button click — creates & resumes the
-    // AudioContext in the same gesture stack so iOS unlocks it.
+    // Must be called synchronously inside a click handler on iOS
     function createAndUnlockContext() {
       if (audioCtx) return;
       try {
@@ -250,10 +258,10 @@
         gainNode.gain.value = 0;
         gainNode.connect(audioCtx.destination);
 
-        // iOS: resume() must also be in the gesture call stack
+        // resume() must be in the gesture call stack on iOS
         audioCtx.resume();
 
-        // Play a zero-length silent buffer — this fully activates the iOS audio session
+        // Silent 1-sample buffer fully activates the iOS audio session
         const silent = audioCtx.createBuffer(1, 1, 22050);
         const silentSrc = audioCtx.createBufferSource();
         silentSrc.buffer = silent;
@@ -265,15 +273,14 @@
       }
     }
 
-    // Fetch + decode the MP3 into a reusable AudioBuffer (can be async,
-    // context is already unlocked by this point)
+    // Fetch + decode MP3 into reusable AudioBuffer (async, context already unlocked)
     async function fetchAndDecodeAudio() {
       if (!audioCtx || audioReady) return;
       try {
-        const res = await fetch(AUDIO_URL);
+        const res      = await fetch(AUDIO_URL);
         const arrayBuf = await res.arrayBuffer();
-        audioBuffer = await audioCtx.decodeAudioData(arrayBuf);
-        audioReady = true;
+        audioBuffer    = await audioCtx.decodeAudioData(arrayBuf);
+        audioReady     = true;
       } catch (e) {
         console.warn('Audio decode failed:', e);
       }
@@ -293,7 +300,6 @@
         if (t < 1) {
           fadeRaf = requestAnimationFrame(step);
         } else {
-          // Disconnect source when fully silent to free resources
           if (targetVol === 0 && audioSource) {
             try { audioSource.stop(); } catch(e) {}
             audioSource = null;
@@ -306,12 +312,12 @@
     function setAudioPlaying(shouldPlay) {
       if (!audioCtx || !audioReady) return;
 
-      // Re-resume on visibility restore (iOS suspends context when tab hides)
+      // iOS suspends AudioContext when tab is hidden — resume on return
       if (audioCtx.state === 'suspended') audioCtx.resume();
 
       if (shouldPlay) {
-        // Create a new BufferSourceNode (they are one-shot and can't be restarted)
         if (!audioSource) {
+          // BufferSourceNodes are one-shot; always create a fresh one
           audioSource = audioCtx.createBufferSource();
           audioSource.buffer = audioBuffer;
           audioSource.loop   = true;
@@ -320,8 +326,7 @@
         }
         fadeTo(1);
       } else {
-        fadeTo(0);
-        // audioSource is stopped inside fadeTo once gain reaches 0
+        fadeTo(0); // audioSource stopped inside fadeTo once gain hits 0
       }
     }
 
@@ -359,10 +364,9 @@
 
     // ── START ───────────────────────────────────────────────────────────────
     startBtn.addEventListener('click', () => {
-      // iOS FIX: unlock audio context synchronously inside this click handler
+      // iOS FIX: unlock AudioContext synchronously inside this click handler
       createAndUnlockContext();
-
-      // Kick off async audio fetch now that context is unlocked
+      // Kick off async MP3 fetch now that context is unlocked
       fetchAndDecodeAudio();
 
       startBtn.style.display          = 'none';
@@ -412,7 +416,6 @@
       setAudioPlaying(true);
     });
 
-    // FIX: original had mismatched braces — two setTimeout calls with only one closing
     muralTarget.addEventListener('targetLost', () => {
       clearTimeout(lostTimer);
       lostTimer = setTimeout(() => {
