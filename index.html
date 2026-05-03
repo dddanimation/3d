@@ -3,426 +3,156 @@
 <head>
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
   <title></title>
-
   <link rel="preload" href="https://dddanimation.github.io/3d/enslaved.glb" as="fetch" crossorigin="anonymous">
-  <link rel="preload" href="https://dddanimation.github.io/3d/enslaved.mp3" as="fetch" crossorigin="anonymous">
-
   <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
   <script src="https://cdn.jsdelivr.net/gh/c-frame/aframe-extras@7.2.0/dist/aframe-extras.min.js"></script>
-
   <style>
     html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; }
-
     body.loading-bg { background: #000 !important; }
-    body.ar-active  { background: transparent !important; }
     a-scene { background: transparent !important; }
-
-    /* ── OVERLAY ── */
     #overlay {
       position: fixed; top: 0; left: 0; width: 100%; height: 100%;
       background: #000; color: white; display: flex; flex-direction: column;
       justify-content: center; align-items: center; z-index: 9999;
       font-family: sans-serif; text-align: center;
     }
-
     #start-btn {
       padding: 18px 40px; font-size: 18px; background: #28a745; color: #fff;
       border: none; border-radius: 4px; cursor: pointer; font-weight: bold;
       text-transform: uppercase; letter-spacing: 1px;
     }
     #start-btn:disabled { background: #555; cursor: default; }
-
     #marker-preview { width: 150px; border: 1px solid #444; margin-bottom: 25px; opacity: 0.8; }
-
-    #progress-container {
-      width: 240px; height: 4px; background: #222;
-      margin-top: 20px; border-radius: 2px; display: none; overflow: hidden;
-    }
-    #progress-bar { width: 0%; height: 100%; background: #28a745; transition: width 0.3s ease; }
-
-    #progress-text {
-      font-size: 10px; margin-top: 15px; color: #666;
-      display: none; letter-spacing: 2px; text-transform: uppercase;
-    }
-
-    #error-msg {
-      display: none; margin-top: 20px; padding: 12px 20px;
-      background: #8b0000; border-radius: 4px; font-size: 13px;
-      max-width: 280px; line-height: 1.5;
-    }
-
-    #retry-btn {
-      display: none; margin-top: 14px; padding: 12px 28px;
-      font-size: 13px; background: #333; color: #fff;
-      border: 1px solid #555; border-radius: 4px; cursor: pointer;
-      font-weight: bold; text-transform: uppercase; letter-spacing: 1px;
-    }
-
-    /* ── SCAN RETICLE ── */
-    #scan-reticle {
-      position: fixed; top: 50%; left: 50%;
-      transform: translate(-50%, -50%);
-      width: 200px; height: 200px;
-      z-index: 1000; display: none; pointer-events: none;
-    }
-    #scan-reticle .corner {
-      position: absolute; width: 28px; height: 28px;
-      border-color: #fff; border-style: solid; opacity: 0.85;
-    }
-    #scan-reticle .tl { top: 0; left: 0;    border-width: 3px 0 0 3px; }
-    #scan-reticle .tr { top: 0; right: 0;   border-width: 3px 3px 0 0; }
-    #scan-reticle .bl { bottom: 0; left: 0;  border-width: 0 0 3px 3px; }
-    #scan-reticle .br { bottom: 0; right: 0; border-width: 0 3px 3px 0; }
-
-    @keyframes reticle-pulse {
-      0%, 100% { opacity: 0.85; transform: translate(-50%, -50%) scale(1); }
-      50%       { opacity: 0.35; transform: translate(-50%, -50%) scale(0.93); }
-    }
-    #scan-reticle.scanning { animation: reticle-pulse 1.8s ease-in-out infinite; }
-
-    /* ── SCAN HINT ── */
-    #scan-hint {
-      position: fixed; bottom: 120px; width: 100%; text-align: center;
-      color: #fff; text-shadow: 0 1px 4px rgba(0,0,0,0.8);
-      font-family: sans-serif; font-size: 11px;
-      letter-spacing: 2px; text-transform: uppercase;
-      z-index: 1000; display: none; font-weight: bold; pointer-events: none;
-    }
-
-    /* ── UI BUTTONS ── */
-    #ui-controls {
-      position: fixed; bottom: 40px; left: 50%; transform: translateX(-50%);
-      display: none; gap: 15px; z-index: 1000; width: 90%; justify-content: center;
-    }
-
-    .black-btn {
-      padding: 15px 25px; background: #000; color: #fff; text-decoration: none;
-      border: 1px solid #444; border-radius: 4px; font-family: sans-serif;
-      font-weight: bold; font-size: 11px; text-transform: uppercase;
-      letter-spacing: 1px; text-align: center; min-width: 120px;
-    }
-
-    .a-enter-vr, .a-enter-ar, .a-orientation-modal { display: none !important; }
   </style>
-
-  <script>
-    AFRAME.registerComponent('smooth-lerp', {
-      schema: {
-        positionAlpha: { type: 'number', default: 0.15 },
-        rotationAlpha: { type: 'number', default: 0.15 }
-      },
-      init() {
-        this.smoothPos  = new THREE.Vector3();
-        this.smoothQuat = new THREE.Quaternion();
-        this.initialized = false;
-      },
-      tick() {
-        const obj = this.el.object3D;
-        if (!this.initialized) {
-          this.smoothPos.copy(obj.position);
-          this.smoothQuat.copy(obj.quaternion);
-          this.initialized = true;
-          return;
-        }
-        if (!this.el.getAttribute('visible')) {
-          this.initialized = false;
-          return;
-        }
-        this.smoothPos.lerp(obj.position, this.data.positionAlpha);
-        this.smoothQuat.slerp(obj.quaternion, this.data.rotationAlpha);
-        obj.position.copy(this.smoothPos);
-        obj.quaternion.copy(this.smoothQuat);
-      }
-    });
-  </script>
 </head>
 <body class="loading-bg">
 
-  <div id="scan-reticle">
-    <div class="corner tl"></div>
-    <div class="corner tr"></div>
-    <div class="corner bl"></div>
-    <div class="corner br"></div>
-  </div>
-
-  <div id="scan-hint">Point camera at artwork</div>
-
   <div id="overlay">
-    <h1 style="letter-spacing: 5px; font-weight: 300; margin-bottom: 5px;">FOUNDATION</h1>
-    <p style="font-size: 10px; letter-spacing: 2px; text-transform: uppercase; margin-top: 0; margin-bottom: 30px; opacity: 0.6;">By Qrcky</p>
-
-    <div id="status-container">
-      <img src="https://dddanimation.github.io/3d/enslaved.jpg" id="marker-preview" alt="Target">
-      <br>
-      <button id="start-btn">Enter Experience</button>
-
-      <div id="progress-container">
-        <div id="progress-bar"></div>
-      </div>
-      <p id="progress-text">Initializing...</p>
-      <div id="error-msg"></div>
-      <button id="retry-btn">Try Again</button>
-    </div>
-  </div>
-
-  <div id="ui-controls">
-    <a href="https://www.instagram.com/qrcky/" target="_blank" class="black-btn">Instagram</a>
-    <a href="https://www.qrcky.net/prints/" target="_blank" class="black-btn">Get Prints</a>
+    <img id="marker-preview" src="YOUR_MARKER_PREVIEW.jpg" alt="Marker preview" />
+    <button id="start-btn">Start AR</button>
   </div>
 
   <a-scene
-    mindar-image="imageTargetSrc: https://dddanimation.github.io/3d/targets.mind; autoStart: false; uiScanning: false; uiLoading: false; maxTrack: 1; filterMinCF: 0.001; filterBeta: 0.001; warmupTolerance: 5; missTolerance: 10;"
+    mindar-image="imageTargetSrc: YOUR_MIND_FILE.mind; autoStart: false;"
     color-space="sRGB"
-    renderer="colorManagement: true; physicallyCorrectLights: true; alpha: true"
+    renderer="colorManagement: true; physicallyCorrectLights: true"
     vr-mode-ui="enabled: false"
-    device-orientation-permission-ui="enabled: false">
-
-    <a-assets timeout="30000">
-      <a-asset-item id="sculpture" src="https://dddanimation.github.io/3d/enslaved.glb" crossorigin="anonymous"></a-asset-item>
-      <audio id="audio-file" src="https://dddanimation.github.io/3d/enslaved.mp3" preload="auto" crossorigin="anonymous" loop></audio>
+    device-orientation-permission-ui="enabled: false"
+  >
+    <a-assets>
+      <a-asset-item id="model" src="https://dddanimation.github.io/3d/enslaved.glb"></a-asset-item>
     </a-assets>
 
     <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
-    <a-light type="ambient" intensity="1.2"></a-light>
-    <a-light type="directional" intensity="0.8" position="1 2 1"></a-light>
 
-    <a-entity
-      mindar-image-target="targetIndex: 0"
-      smooth-lerp="positionAlpha: 0.15; rotationAlpha: 0.15"
-      id="mural-target">
-
+    <a-entity mindar-image-target="targetIndex: 0">
       <a-gltf-model
-        src="#sculpture"
-        position="0.0 -0.35 0.0"
-        scale="0.17 0.17 0.17"
-        rotation="0 0 0"
+        id="ar-model"
+        src="#model"
+        position="0 0 0"
+        scale="0.5 0.5 0.5"
         animation-mixer
-        animation="property: rotation; to: 0 360 0; loop: true; dur: 50000; easing: linear">
-      </a-gltf-model>
-
+      ></a-gltf-model>
     </a-entity>
-
   </a-scene>
 
   <script>
-    const startBtn          = document.getElementById('start-btn');
-    const retryBtn          = document.getElementById('retry-btn');
-    const overlay           = document.getElementById('overlay');
-    const progressContainer = document.getElementById('progress-container');
-    const progressBar       = document.getElementById('progress-bar');
-    const progressText      = document.getElementById('progress-text');
-    const errorMsg          = document.getElementById('error-msg');
-    const sceneEl           = document.querySelector('a-scene');
-    const audioEl           = document.getElementById('audio-file');
-    const scanHint          = document.getElementById('scan-hint');
-    const scanReticle       = document.getElementById('scan-reticle');
-    const uiControls        = document.getElementById('ui-controls');
-    const muralTarget       = document.getElementById('mural-target');
+    // ─── iOS-safe Audio Manager ───────────────────────────────────────────────
+    // iOS blocks ALL audio until a direct user gesture. We must:
+    //   1. Create AudioContext inside the tap handler (not before)
+    //   2. Resume the context synchronously in the same gesture
+    //   3. Use Web Audio API (HTMLAudioElement alone is unreliable in WKWebView)
 
-    let targetActive      = false;
-    let userNavigatedAway = false;
+    let audioCtx = null;
+    let audioSource = null;
+    let audioBuffer = null;
+    let audioReady = false;
 
-    // ── AUDIO ───────────────────────────────────────────────────────────────
-    let audioCtx  = null;
-    let gainNode  = null;
-    let fadeRaf   = null;
-    const FADE_MS = 600;
+    // Silently pre-fetch the audio bytes so playback is instant later
+    async function fetchAudioBuffer(ctx) {
+      const res = await fetch('https://dddanimation.github.io/3d/enslaved.mp3');
+      const arrayBuffer = await res.arrayBuffer();
+      return ctx.decodeAudioData(arrayBuffer);
+    }
 
-    function ensureAudioGraph() {
-      if (audioCtx) return;
+    // Call this INSIDE the button click handler to unlock iOS audio
+    async function unlockAndPrepareAudio() {
+      // 1. Create context synchronously in the gesture handler
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+      // 2. Resume immediately — iOS requires this inside the gesture
+      if (audioCtx.state === 'suspended') {
+        await audioCtx.resume();
+      }
+
+      // 3. Play a zero-length silent buffer to fully unlock the audio session
+      const silentBuffer = audioCtx.createBuffer(1, 1, 22050);
+      const silentSource = audioCtx.createBufferSource();
+      silentSource.buffer = silentBuffer;
+      silentSource.connect(audioCtx.destination);
+      silentSource.start(0);
+
+      // 4. Fetch and decode the real audio (can be async now, context is unlocked)
       try {
-        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-        gainNode = audioCtx.createGain();
-        gainNode.gain.value = 0;
-        gainNode.connect(audioCtx.destination);
-        audioCtx.createMediaElementSource(audioEl).connect(gainNode);
-      } catch (e) { audioCtx = null; }
-    }
-
-    function fadeTo(targetVol) {
-      cancelAnimationFrame(fadeRaf);
-      if (!gainNode) {
-        if (targetVol > 0) audioEl.play().catch(() => {});
-        else audioEl.pause();
-        return;
+        audioBuffer = await fetchAudioBuffer(audioCtx);
+        audioReady = true;
+        console.log('Audio ready');
+      } catch (e) {
+        console.warn('Audio fetch failed:', e);
       }
-      const start    = performance.now();
-      const startVol = gainNode.gain.value;
-      const delta    = targetVol - startVol;
-      function step(now) {
-        const t    = Math.min(1, (now - start) / FADE_MS);
-        const ease = t < 0.5 ? 4*t*t*t : 1 - Math.pow(-2*t+2, 3)/2;
-        gainNode.gain.value = startVol + delta * ease;
-        if (t < 1) { fadeRaf = requestAnimationFrame(step); }
-        else { if (targetVol === 0) audioEl.pause(); }
+    }
+
+    function playAudio() {
+      if (!audioReady || !audioCtx || !audioBuffer) return;
+      // Stop any existing playback
+      if (audioSource) {
+        try { audioSource.stop(); } catch(e) {}
       }
-      if (targetVol > 0 && audioEl.paused) audioEl.play().catch(() => {});
-      fadeRaf = requestAnimationFrame(step);
+      audioSource = audioCtx.createBufferSource();
+      audioSource.buffer = audioBuffer;
+      audioSource.loop = true;                     // set false if you don't want looping
+      audioSource.connect(audioCtx.destination);
+      audioSource.start(0);
     }
 
-    function setAudioPlaying(shouldPlay) {
-      ensureAudioGraph();
-      if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
-      fadeTo(shouldPlay ? 1 : 0);
-    }
-
-    // ── AUDIO UNLOCK ────────────────────────────────────────────────────────
-    function unlockAudio() {
-      try {
-        const Ctx = window.AudioContext || window.webkitAudioContext;
-        if (Ctx) { const t = new Ctx(); t.resume().then(() => t.close()); }
-        const three = THREE.AudioContext && THREE.AudioContext.getContext();
-        if (three && three.state === 'suspended') three.resume();
-      } catch (e) {}
-    }
-
-    // ── SIMULATED PROGRESS ──────────────────────────────────────────────────
-    let simProgress = 0;
-    let simInterval = null;
-    let loadTimeout = null;
-
-    function startSimProgress() {
-      simInterval = setInterval(() => {
-        simProgress += (99 - simProgress) * 0.04;
-        renderProgress(simProgress);
-      }, 120);
-      loadTimeout = setTimeout(() => {
-        clearInterval(simInterval);
-        showError('Taking too long to load.<br>Check your connection or camera permissions.', true);
-      }, 30000);
-    }
-
-    function completeProgress() {
-      clearInterval(simInterval);
-      clearTimeout(loadTimeout);
-      renderProgress(100);
-    }
-
-    function renderProgress(val) {
-      const v = Math.min(100, val);
-      progressBar.style.width = v + '%';
-      let status = 'DOWNLOADING ASSETS...';
-      if (v > 60) status = 'LOADING MODEL...';
-      if (v > 85) status = 'STARTING CAMERA...';
-      if (v >= 100) status = 'READY';
-      progressText.innerText = status + '  ' + Math.round(v) + '%';
-    }
-
-    // ── START ───────────────────────────────────────────────────────────────
-    startBtn.addEventListener('click', () => {
-      unlockAudio();
-      startBtn.style.display          = 'none';
-      progressContainer.style.display = 'block';
-      progressText.style.display      = 'block';
-      startSimProgress();
-
-      function startAR() {
-        const mindAR = sceneEl.systems['mindar-image-system'];
-        if (mindAR) mindAR.start();
-        else showError('AR system failed to initialise. Please refresh.');
+    function stopAudio() {
+      if (audioSource) {
+        try { audioSource.stop(); } catch(e) {}
+        audioSource = null;
       }
-
-      if (sceneEl.hasLoaded) startAR();
-      else sceneEl.addEventListener('loaded', startAR, { once: true });
-    });
-
-    retryBtn.addEventListener('click', () => window.location.reload());
-
-    // ── CAMERA READY ────────────────────────────────────────────────────────
-    sceneEl.addEventListener('arReady', () => {
-      completeProgress();
-      setTimeout(() => {
-        document.body.classList.remove('loading-bg');
-        document.body.classList.add('ar-active');
-        overlay.style.display     = 'none';
-        scanHint.style.display    = 'block';
-        scanReticle.classList.add('scanning');
-        scanReticle.style.display = 'block';
-      }, 800);
-    });
-
-    // ── TARGET FOUND / LOST ─────────────────────────────────────────────────
-    let lostTimer = null;
-
-    muralTarget.addEventListener('targetFound', () => {
-      clearTimeout(lostTimer);
-      lostTimer    = null;
-      targetActive = true;
-
-      scanReticle.classList.remove('scanning');
-      scanReticle.style.display = 'none';
-      scanHint.style.display    = 'none';
-      uiControls.style.display  = 'flex';
-
-      if (navigator.vibrate) navigator.vibrate(80);
-      setAudioPlaying(true);
-    });
-
-    muralTarget.addEventListener('targetLost', () => {
-      clearTimeout(lostTimer);
-      lostTimer = setTimeout(() => {
-        targetActive = false;
-
-        scanReticle.classList.add('scanning');
-        scanReticle.style.display = 'block';
-        scanHint.style.display    = 'block';
-        uiControls.style.display  = 'none';
-
-        setAudioPlaying(false);
-      }, 800);
-    });
-
-    // ── BUTTON NAVIGATION ───────────────────────────────────────────────────
-    document.querySelectorAll('.black-btn').forEach(btn => {
-      btn.addEventListener('click', () => {
-        userNavigatedAway = true;
-        setAudioPlaying(false);
-      });
-    });
-
-    // ── VISIBILITY ──────────────────────────────────────────────────────────
-    document.addEventListener('visibilitychange', () => {
-      if (document.hidden) {
-        setAudioPlaying(false);
-      } else {
-        if (userNavigatedAway) { userNavigatedAway = false; return; }
-        if (targetActive) setAudioPlaying(true);
-      }
-    });
-
-    // ── ERROR HANDLING ──────────────────────────────────────────────────────
-    let arReadyFired = false;
-    sceneEl.addEventListener('arReady', () => { arReadyFired = true; }, { once: true });
-
-    sceneEl.addEventListener('arError', (e) => {
-      setTimeout(() => {
-        if (arReadyFired) return;
-        const detail = (e.detail || '').toString().toLowerCase();
-        let msg;
-        if (location.protocol !== 'https:') {
-          msg = 'HTTPS is required for camera access.<br>Please open this page over a secure connection.';
-        } else if (detail.includes('permission') || detail.includes('denied')) {
-          msg = 'Camera permission was denied.<br>Allow camera access in your browser settings, then refresh.';
-        } else if (detail.includes('support') || detail.includes('webkit')) {
-          msg = 'Your browser may not support WebAR.<br>Try opening in Chrome or Safari.';
-        } else {
-          msg = 'Could not start the camera.<br>Please refresh and allow camera access.';
-        }
-        showError(msg, true);
-      }, 2000);
-    });
-
-    function showError(html, showRetry = false) {
-      clearInterval(simInterval);
-      clearTimeout(loadTimeout);
-      startBtn.style.display          = 'none';
-      progressContainer.style.display = 'none';
-      progressText.style.display      = 'none';
-      errorMsg.innerHTML              = html;
-      errorMsg.style.display          = 'block';
-      retryBtn.style.display          = showRetry ? 'inline-block' : 'none';
     }
+
+    // ─── AR Scene Setup ───────────────────────────────────────────────────────
+    const startBtn = document.getElementById('start-btn');
+    const overlay  = document.getElementById('overlay');
+    const sceneEl  = document.querySelector('a-scene');
+
+    startBtn.addEventListener('click', async () => {
+      startBtn.disabled = true;
+      startBtn.textContent = 'Loading…';
+
+      // Unlock audio IN this click handler — this is the iOS-required gesture
+      await unlockAndPrepareAudio();
+
+      // Start MindAR
+      const arSystem = sceneEl.systems['mindar-image-system'];
+      arSystem.start();
+
+      overlay.style.display = 'none';
+    });
+
+    // Play audio when marker is found, stop when lost
+    sceneEl.addEventListener('targetFound', () => {
+      console.log('Marker found — playing audio');
+      playAudio();
+    });
+
+    sceneEl.addEventListener('targetLost', () => {
+      console.log('Marker lost — stopping audio');
+      stopAudio();
+    });
   </script>
+
 </body>
 </html>
