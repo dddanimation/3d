@@ -172,7 +172,7 @@
   </div>
 
   <a-scene
-    mindar-image="imageTargetSrc: https://dddanimation.github.io/3d/targets.mind; autoStart: false; uiScanning: false; uiLoading: false; maxTrack: 1; filterMinCF: 0.001; filterBeta: 0.001; warmupTolerance: 5; missTolerance: 10;"
+    mindar-image="imageTargetSrc: https://dddanimation.github.io/3d/targets.mind; autoStart: false; uiScanning: false; uiLoading: false; maxTrack: 2; filterMinCF: 0.001; filterBeta: 0.001; warmupTolerance: 5; missTolerance: 10;"
     color-space="sRGB"
     renderer="colorManagement: true; physicallyCorrectLights: true; alpha: true"
     vr-mode-ui="enabled: false"
@@ -186,33 +186,34 @@
     <a-light type="ambient" intensity="1.2"></a-light>
     <a-light type="directional" intensity="0.8" position="1 2 1"></a-light>
 
+    <!-- ── TARGET 0 ── adjust position/scale/rotation for this image -->
     <a-entity
       mindar-image-target="targetIndex: 0"
       smooth-lerp="positionAlpha: 0.15; rotationAlpha: 0.15"
-      id="mural-target">
-
-      <!-- Instance 1 — left of marker centre -->
-      <!-- Adjust position="X Y Z" to place where you need it -->
+      id="target-0">
       <a-gltf-model
         src="#sculpture"
-        position="-0.3 -0.35 0.0"
+        position="0.0 -0.35 0.0"
         scale="0.17 0.17 0.17"
         rotation="0 0 0"
         animation-mixer
         animation="property: rotation; to: 0 360 0; loop: true; dur: 50000; easing: linear">
       </a-gltf-model>
+    </a-entity>
 
-      <!-- Instance 2 — right of marker centre -->
-      <!-- Adjust position="X Y Z" to place where you need it -->
+    <!-- ── TARGET 1 ── adjust position/scale/rotation for this image -->
+    <a-entity
+      mindar-image-target="targetIndex: 1"
+      smooth-lerp="positionAlpha: 0.15; rotationAlpha: 0.15"
+      id="target-1">
       <a-gltf-model
         src="#sculpture"
-        position="0.3 -0.35 0.0"
-        scale="0.17 0.17 0.17"
+        position="0.0 -0.35 0.0"
+        scale="0.25 0.25 0.25"
         rotation="0 0 0"
         animation-mixer
         animation="property: rotation; to: 0 360 0; loop: true; dur: 50000; easing: linear">
       </a-gltf-model>
-
     </a-entity>
 
   </a-scene>
@@ -229,27 +230,31 @@
     const scanHint          = document.getElementById('scan-hint');
     const scanReticle       = document.getElementById('scan-reticle');
     const uiControls        = document.getElementById('ui-controls');
-    const muralTarget       = document.getElementById('mural-target');
 
-    let targetActive      = false;
+    let activeTargets     = 0;   // count of how many targets are currently visible
     let userNavigatedAway = false;
 
-    // ── AUDIO (iOS-safe Web Audio API) ──────────────────────────────────────
+    // ── AUDIO (iOS Safari-safe) ─────────────────────────────────────────────
     //
-    // iOS requires AudioContext to be created AND resumed inside a direct
-    // user-gesture call stack. We also play a silent buffer at unlock time
-    // to fully activate the audio session before any real audio is needed.
+    // Safari rules:
+    //   1. AudioContext must be created + resumed in the SYNCHRONOUS call stack
+    //      of a user gesture (click or touchend). Async/await breaks this.
+    //   2. A silent buffer played immediately fully unlocks the audio session.
+    //   3. After unlock, fetch+decode can be async.
+    //   4. On every subsequent touchend/click anywhere, re-resume the context
+    //      because Safari can silently suspend it again (e.g. after a phone call,
+    //      notification, or screen lock).
     //
     let audioCtx    = null;
     let gainNode    = null;
-    let audioBuffer = null;   // decoded PCM
-    let audioSource = null;   // current BufferSourceNode
+    let audioBuffer = null;
+    let audioSource = null;
     let audioReady  = false;
     let fadeRaf     = null;
     const FADE_MS   = 600;
     const AUDIO_URL = 'https://dddanimation.github.io/3d/enslaved.mp3';
 
-    // Must be called synchronously inside a click handler on iOS
+    // Step 1 — called synchronously inside the button click
     function createAndUnlockContext() {
       if (audioCtx) return;
       try {
@@ -258,22 +263,23 @@
         gainNode.gain.value = 0;
         gainNode.connect(audioCtx.destination);
 
-        // resume() must be in the gesture call stack on iOS
+        // Both of these must stay in the synchronous gesture stack on iOS
         audioCtx.resume();
 
-        // Silent 1-sample buffer fully activates the iOS audio session
-        const silent = audioCtx.createBuffer(1, 1, 22050);
+        // Silent 1-sample buffer — fully activates the Safari audio session
+        const silent    = audioCtx.createBuffer(1, 1, 22050);
         const silentSrc = audioCtx.createBufferSource();
         silentSrc.buffer = silent;
         silentSrc.connect(audioCtx.destination);
         silentSrc.start(0);
+
       } catch (e) {
         console.warn('AudioContext creation failed:', e);
         audioCtx = null;
       }
     }
 
-    // Fetch + decode MP3 into reusable AudioBuffer (async, context already unlocked)
+    // Step 2 — async fetch is safe now because the context is already unlocked
     async function fetchAndDecodeAudio() {
       if (!audioCtx || audioReady) return;
       try {
@@ -281,10 +287,21 @@
         const arrayBuf = await res.arrayBuffer();
         audioBuffer    = await audioCtx.decodeAudioData(arrayBuf);
         audioReady     = true;
+        // If a target is already visible by the time audio finishes loading, start playing
+        if (activeTargets > 0) setAudioPlaying(true);
       } catch (e) {
         console.warn('Audio decode failed:', e);
       }
     }
+
+    // Safari can suspend the context silently — re-resume on any user touch
+    // This is the key fix for Safari not playing after the initial unlock
+    document.addEventListener('touchend', () => {
+      if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+    }, { passive: true });
+    document.addEventListener('click', () => {
+      if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+    }, { passive: true });
 
     function fadeTo(targetVol) {
       cancelAnimationFrame(fadeRaf);
@@ -311,13 +328,10 @@
 
     function setAudioPlaying(shouldPlay) {
       if (!audioCtx || !audioReady) return;
-
-      // iOS suspends AudioContext when tab is hidden — resume on return
       if (audioCtx.state === 'suspended') audioCtx.resume();
 
       if (shouldPlay) {
         if (!audioSource) {
-          // BufferSourceNodes are one-shot; always create a fresh one
           audioSource = audioCtx.createBufferSource();
           audioSource.buffer = audioBuffer;
           audioSource.loop   = true;
@@ -326,7 +340,7 @@
         }
         fadeTo(1);
       } else {
-        fadeTo(0); // audioSource stopped inside fadeTo once gain hits 0
+        fadeTo(0);
       }
     }
 
@@ -364,9 +378,8 @@
 
     // ── START ───────────────────────────────────────────────────────────────
     startBtn.addEventListener('click', () => {
-      // iOS FIX: unlock AudioContext synchronously inside this click handler
+      // iOS Safari FIX: unlock synchronously inside this click handler
       createAndUnlockContext();
-      // Kick off async MP3 fetch now that context is unlocked
       fetchAndDecodeAudio();
 
       startBtn.style.display          = 'none';
@@ -400,12 +413,15 @@
     });
 
     // ── TARGET FOUND / LOST ─────────────────────────────────────────────────
+    // Both targets share the same audio — audio plays when ANY target is visible,
+    // stops only when ALL targets are lost.
+
     let lostTimer = null;
 
-    muralTarget.addEventListener('targetFound', () => {
+    function onTargetFound() {
       clearTimeout(lostTimer);
-      lostTimer    = null;
-      targetActive = true;
+      lostTimer = null;
+      activeTargets++;
 
       scanReticle.classList.remove('scanning');
       scanReticle.style.display = 'none';
@@ -414,12 +430,13 @@
 
       if (navigator.vibrate) navigator.vibrate(80);
       setAudioPlaying(true);
-    });
+    }
 
-    muralTarget.addEventListener('targetLost', () => {
+    function onTargetLost() {
+      activeTargets = Math.max(0, activeTargets - 1);
       clearTimeout(lostTimer);
       lostTimer = setTimeout(() => {
-        targetActive = false;
+        if (activeTargets > 0) return; // another target is still visible
 
         scanReticle.classList.add('scanning');
         scanReticle.style.display = 'block';
@@ -428,7 +445,12 @@
 
         setAudioPlaying(false);
       }, 1500);
-    });
+    }
+
+    document.getElementById('target-0').addEventListener('targetFound', onTargetFound);
+    document.getElementById('target-0').addEventListener('targetLost',  onTargetLost);
+    document.getElementById('target-1').addEventListener('targetFound', onTargetFound);
+    document.getElementById('target-1').addEventListener('targetLost',  onTargetLost);
 
     // ── BUTTON NAVIGATION ───────────────────────────────────────────────────
     document.querySelectorAll('.black-btn').forEach(btn => {
@@ -444,7 +466,7 @@
         setAudioPlaying(false);
       } else {
         if (userNavigatedAway) { userNavigatedAway = false; return; }
-        if (targetActive) setAudioPlaying(true);
+        if (activeTargets > 0) setAudioPlaying(true);
       }
     });
 
