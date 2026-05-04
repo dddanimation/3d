@@ -133,26 +133,29 @@
   </style>
 
   <script>
+    // ── SMOOTH-LERP: exits early when entity is not visible ─────────────────
     AFRAME.registerComponent('smooth-lerp', {
       schema: {
         positionAlpha: { type: 'number', default: 0.15 },
         rotationAlpha: { type: 'number', default: 0.15 }
       },
       init() {
-        this.smoothPos  = new THREE.Vector3();
-        this.smoothQuat = new THREE.Quaternion();
+        this.smoothPos   = new THREE.Vector3();
+        this.smoothQuat  = new THREE.Quaternion();
         this.initialized = false;
+        this.active      = false;
+
+        // Gate ticking on actual tracking state to avoid wasted lerp math
+        this.el.addEventListener('targetFound', () => { this.active = true; });
+        this.el.addEventListener('targetLost',  () => { this.active = false; this.initialized = false; });
       },
       tick() {
+        if (!this.active) return;
         const obj = this.el.object3D;
         if (!this.initialized) {
           this.smoothPos.copy(obj.position);
           this.smoothQuat.copy(obj.quaternion);
           this.initialized = true;
-          return;
-        }
-        if (!this.el.getAttribute('visible')) {
-          this.initialized = false;
           return;
         }
         this.smoothPos.lerp(obj.position, this.data.positionAlpha);
@@ -233,7 +236,7 @@
     <a-light type="ambient" intensity="1.2"></a-light>
     <a-light type="directional" intensity="0.8" position="1 2 1"></a-light>
 
-    <!-- TARGET 0 — adjust position/scale/rotation for this image -->
+    <!-- TARGET 0 -->
     <a-entity
       mindar-image-target="targetIndex: 0"
       smooth-lerp="positionAlpha: 0.15; rotationAlpha: 0.15"
@@ -248,7 +251,7 @@
       </a-gltf-model>
     </a-entity>
 
-    <!-- TARGET 1 — adjust position/scale/rotation for this image -->
+    <!-- TARGET 1 -->
     <a-entity
       mindar-image-target="targetIndex: 1"
       smooth-lerp="positionAlpha: 0.15; rotationAlpha: 0.15"
@@ -266,77 +269,79 @@
   </a-scene>
 
   <script>
-    // ── IN-APP BROWSER DETECTION ────────────────────────────────────────────
+    // ── IN-APP BROWSER DETECTION ─────────────────────────────────────────────
+    // Placed after markup so getElementById is safe without waiting for DOMContentLoaded
     (function() {
-      const ua = navigator.userAgent;
-      const isIOS = /iPhone|iPad|iPod/i.test(ua);
-      if (!isIOS) return;
-      const isFullSafari = /Safari\//.test(ua) && !/CriOS|FxiOS/.test(ua);
-      const isStandalone = window.navigator.standalone === true;
+      var ua = navigator.userAgent;
+      if (!/iPhone|iPad|iPod/i.test(ua)) return;
+      var isFullSafari = /Safari\//.test(ua) && !/CriOS|FxiOS/.test(ua);
+      var isStandalone = window.navigator.standalone === true;
       if (!isFullSafari && !isStandalone) {
         document.getElementById('safari-banner').style.display = 'flex';
-        document.getElementById('open-safari-btn').addEventListener('click', () => {
+        document.getElementById('open-safari-btn').addEventListener('click', function() {
           window.location = 'x-web-search://?q=' + encodeURIComponent(window.location.href);
-          setTimeout(() => { window.location.href = window.location.href; }, 300);
+          setTimeout(function() { window.location.href = window.location.href; }, 300);
         });
       }
     })();
 
-    const startBtn          = document.getElementById('start-btn');
-    const retryBtn          = document.getElementById('retry-btn');
-    const overlay           = document.getElementById('overlay');
-    const progressContainer = document.getElementById('progress-container');
-    const progressBar       = document.getElementById('progress-bar');
-    const progressText      = document.getElementById('progress-text');
-    const errorMsg          = document.getElementById('error-msg');
-    const sceneEl           = document.querySelector('a-scene');
-    const scanHint          = document.getElementById('scan-hint');
-    const scanReticle       = document.getElementById('scan-reticle');
-    const uiControls        = document.getElementById('ui-controls');
+    // ── DOM REFS ─────────────────────────────────────────────────────────────
+    var startBtn          = document.getElementById('start-btn');
+    var retryBtn          = document.getElementById('retry-btn');
+    var overlay           = document.getElementById('overlay');
+    var progressContainer = document.getElementById('progress-container');
+    var progressBar       = document.getElementById('progress-bar');
+    var progressText      = document.getElementById('progress-text');
+    var errorMsg          = document.getElementById('error-msg');
+    var sceneEl           = document.querySelector('a-scene');
+    var scanHint          = document.getElementById('scan-hint');
+    var scanReticle       = document.getElementById('scan-reticle');
+    var uiControls        = document.getElementById('ui-controls');
 
-    let activeTargets     = 0;
-    let userNavigatedAway = false;
+    // ── STATE ────────────────────────────────────────────────────────────────
+    // Use a Set so duplicate targetFound/targetLost events can never drift the count
+    var activeTargets     = new Set();
+    var userNavigatedAway = false;
+    var arStarted         = false; // true only after arReady fires
 
-    // ── AUDIO ───────────────────────────────────────────────────────────────
-    const AUDIO_URL = 'https://dddanimation.github.io/3d/enslaved.mp3';
-    const audioEl   = new Audio();
+    // ── AUDIO ────────────────────────────────────────────────────────────────
+    var AUDIO_URL = 'https://dddanimation.github.io/3d/enslaved.mp3';
+    var audioEl   = new Audio();
     audioEl.src     = AUDIO_URL;
     audioEl.loop    = true;
     audioEl.preload = 'auto';
     audioEl.setAttribute('playsinline', '');
     audioEl.setAttribute('webkit-playsinline', '');
 
-    let audioCtx  = null;
-    let gainNode  = null;
-    let fadeRaf   = null;
-    const FADE_MS = 600;
+    var audioCtx = null;
+    var gainNode = null;
+    var FADE_S   = 0.6; // seconds — used by Web Audio scheduler
 
     function unlockAudio() {
       if (audioCtx) return;
       try {
         // Play+pause synchronously in the gesture to unlock HTMLAudioElement on iOS
-        audioEl.play().then(() => {
+        audioEl.play().then(function() {
           audioEl.pause();
           audioEl.currentTime = 0;
-        }).catch(() => {});
+        }).catch(function() {});
 
-        // Web Audio graph for fading
         audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-        gainNode = audioCtx.createGain();
+        gainNode  = audioCtx.createGain();
         gainNode.gain.value = 0;
         gainNode.connect(audioCtx.destination);
         audioCtx.createMediaElementSource(audioEl).connect(gainNode);
         audioCtx.resume();
 
         // Entry chime confirms audio is working
-        const chimeGain = audioCtx.createGain();
+        var chimeGain = audioCtx.createGain();
         chimeGain.connect(audioCtx.destination);
-        [440, 660].forEach((freq, i) => {
-          const osc = audioCtx.createOscillator();
+        [440, 660].forEach(function(freq, i) {
+          var osc = audioCtx.createOscillator();
           osc.type = 'sine';
           osc.frequency.value = freq;
           osc.connect(chimeGain);
-          const t = audioCtx.currentTime + i * 0.12;
+          var t = audioCtx.currentTime + i * 0.12;
           chimeGain.gain.setValueAtTime(0, t);
           chimeGain.gain.linearRampToValueAtTime(0.18, t + 0.04);
           chimeGain.gain.exponentialRampToValueAtTime(0.001, t + 0.35);
@@ -349,51 +354,47 @@
       }
     }
 
-    document.addEventListener('touchend', () => {
+    // Resume AudioContext on any touch — iOS suspends it aggressively
+    document.addEventListener('touchend', function() {
       if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
     }, { passive: true });
 
+    // ── FADE: uses Web Audio scheduler; falls back to rAF volume lerp ────────
+    var fadeRaf = null;
+
     function fadeTo(targetVol) {
-      cancelAnimationFrame(fadeRaf);
       if (gainNode) {
-        const start    = performance.now();
-        const startVol = gainNode.gain.value;
-        const delta    = targetVol - startVol;
+        // Web Audio path — smooth, off the JS thread
+        var now = audioCtx.currentTime;
+        gainNode.gain.cancelScheduledValues(now);
+        gainNode.gain.setValueAtTime(gainNode.gain.value, now);
+        gainNode.gain.linearRampToValueAtTime(targetVol, now + FADE_S);
+        if (targetVol > 0 && audioEl.paused) {
+          audioEl.play().catch(function() {});
+        } else if (targetVol === 0) {
+          setTimeout(function() { audioEl.pause(); }, FADE_S * 1000);
+        }
+      } else {
+        // HTMLAudioElement fallback — unified fade helper
+        cancelAnimationFrame(fadeRaf);
+        var startVol = audioEl.volume;
+        var delta    = targetVol - startVol;
+        var start    = performance.now();
+        var fadeDur  = FADE_S * 1000;
+        if (targetVol > 0 && audioEl.paused) {
+          audioEl.volume = 0;
+          audioEl.play().catch(function() {});
+        }
         function step(now) {
-          const t    = Math.min(1, (now - start) / FADE_MS);
-          const ease = t < 0.5 ? 4*t*t*t : 1 - Math.pow(-2*t+2, 3)/2;
-          gainNode.gain.value = startVol + delta * ease;
+          var t = Math.min(1, (now - start) / fadeDur);
+          audioEl.volume = Math.max(0, Math.min(1, startVol + delta * t));
           if (t < 1) {
             fadeRaf = requestAnimationFrame(step);
           } else if (targetVol === 0) {
             audioEl.pause();
           }
         }
-        if (targetVol > 0 && audioEl.paused) audioEl.play().catch(() => {});
         fadeRaf = requestAnimationFrame(step);
-      } else {
-        // Plain HTMLAudioElement fallback
-        if (targetVol > 0) {
-          audioEl.volume = 0;
-          audioEl.play().catch(() => {});
-          const start = performance.now();
-          function stepVol(now) {
-            const t = Math.min(1, (now - start) / FADE_MS);
-            audioEl.volume = t;
-            if (t < 1) fadeRaf = requestAnimationFrame(stepVol);
-          }
-          fadeRaf = requestAnimationFrame(stepVol);
-        } else {
-          const start    = performance.now();
-          const startVol = audioEl.volume;
-          function stepVol(now) {
-            const t = Math.min(1, (now - start) / FADE_MS);
-            audioEl.volume = startVol * (1 - t);
-            if (t < 1) fadeRaf = requestAnimationFrame(stepVol);
-            else audioEl.pause();
-          }
-          fadeRaf = requestAnimationFrame(stepVol);
-        }
       }
     }
 
@@ -402,17 +403,18 @@
       fadeTo(shouldPlay ? 1 : 0);
     }
 
-    // ── SIMULATED PROGRESS ──────────────────────────────────────────────────
-    let simProgress = 0;
-    let simInterval = null;
-    let loadTimeout = null;
+    // ── SIMULATED PROGRESS ───────────────────────────────────────────────────
+    // Kept as setInterval — user is actively watching, tab-hidden waste is acceptable
+    var simProgress = 0;
+    var simInterval = null;
+    var loadTimeout = null;
 
     function startSimProgress() {
-      simInterval = setInterval(() => {
+      simInterval = setInterval(function() {
         simProgress += (99 - simProgress) * 0.04;
         renderProgress(simProgress);
       }, 120);
-      loadTimeout = setTimeout(() => {
+      loadTimeout = setTimeout(function() {
         clearInterval(simInterval);
         showError('Taking too long to load.<br>Check your connection or camera permissions.', true);
       }, 30000);
@@ -425,17 +427,17 @@
     }
 
     function renderProgress(val) {
-      const v = Math.min(100, val);
-      progressBar.style.width = v + '%';
-      let status = 'DOWNLOADING ASSETS...';
+      var v      = Math.min(100, val);
+      var status = 'DOWNLOADING ASSETS...';
       if (v > 60) status = 'LOADING MODEL...';
       if (v > 85) status = 'STARTING CAMERA...';
       if (v >= 100) status = 'READY';
-      progressText.innerText = status + '  ' + Math.round(v) + '%';
+      progressBar.style.width = v + '%';
+      progressText.innerText  = status + '  ' + Math.round(v) + '%';
     }
 
-    // ── START ───────────────────────────────────────────────────────────────
-    startBtn.addEventListener('click', () => {
+    // ── START ────────────────────────────────────────────────────────────────
+    startBtn.addEventListener('click', function() {
       unlockAudio();
 
       startBtn.style.display          = 'none';
@@ -444,7 +446,7 @@
       startSimProgress();
 
       function startAR() {
-        const mindAR = sceneEl.systems['mindar-image-system'];
+        var mindAR = sceneEl.systems['mindar-image-system'];
         if (mindAR) mindAR.start();
         else showError('AR system failed to initialise. Please refresh.');
       }
@@ -453,12 +455,13 @@
       else sceneEl.addEventListener('loaded', startAR, { once: true });
     });
 
-    retryBtn.addEventListener('click', () => window.location.reload());
+    retryBtn.addEventListener('click', function() { window.location.reload(); });
 
-    // ── CAMERA READY ────────────────────────────────────────────────────────
-    sceneEl.addEventListener('arReady', () => {
+    // ── AR READY — single consolidated listener ──────────────────────────────
+    sceneEl.addEventListener('arReady', function() {
+      arStarted = true;
       completeProgress();
-      setTimeout(() => {
+      setTimeout(function() {
         document.body.classList.remove('loading-bg');
         document.body.classList.add('ar-active');
         overlay.style.display     = 'none';
@@ -466,15 +469,15 @@
         scanReticle.classList.add('scanning');
         scanReticle.style.display = 'block';
       }, 800);
-    });
+    }, { once: true });
 
-    // ── TARGET FOUND / LOST ─────────────────────────────────────────────────
-    let lostTimer = null;
+    // ── TARGET FOUND / LOST — Set-based, immune to duplicate events ──────────
+    var lostTimer = null;
 
-    function onTargetFound() {
+    function onTargetFound(e) {
+      activeTargets.add(e.currentTarget.id);
       clearTimeout(lostTimer);
       lostTimer = null;
-      activeTargets++;
       scanReticle.classList.remove('scanning');
       scanReticle.style.display = 'none';
       scanHint.style.display    = 'none';
@@ -483,11 +486,12 @@
       setAudioPlaying(true);
     }
 
-    function onTargetLost() {
-      activeTargets = Math.max(0, activeTargets - 1);
+    function onTargetLost(e) {
+      activeTargets.delete(e.currentTarget.id);
       clearTimeout(lostTimer);
-      lostTimer = setTimeout(() => {
-        if (activeTargets > 0) return;
+      // Keep 1500 ms grace period before hiding UI — prevents flicker on brief loss
+      lostTimer = setTimeout(function() {
+        if (activeTargets.size > 0) return;
         scanReticle.classList.add('scanning');
         scanReticle.style.display = 'block';
         scanHint.style.display    = 'block';
@@ -501,33 +505,32 @@
     document.getElementById('target-1').addEventListener('targetFound', onTargetFound);
     document.getElementById('target-1').addEventListener('targetLost',  onTargetLost);
 
-    // ── BUTTON NAVIGATION ───────────────────────────────────────────────────
-    document.querySelectorAll('.black-btn').forEach(btn => {
-      btn.addEventListener('click', () => {
+    // ── BUTTON NAVIGATION ────────────────────────────────────────────────────
+    document.querySelectorAll('.black-btn').forEach(function(btn) {
+      btn.addEventListener('click', function() {
         userNavigatedAway = true;
         setAudioPlaying(false);
       });
     });
 
-    // ── VISIBILITY ──────────────────────────────────────────────────────────
-    document.addEventListener('visibilitychange', () => {
+    // ── VISIBILITY ───────────────────────────────────────────────────────────
+    document.addEventListener('visibilitychange', function() {
       if (document.hidden) {
         setAudioPlaying(false);
       } else {
         if (userNavigatedAway) { userNavigatedAway = false; return; }
-        if (activeTargets > 0) setAudioPlaying(true);
+        // Only resume if AR is running and a target is actually tracked
+        if (arStarted && activeTargets.size > 0) setAudioPlaying(true);
       }
     });
 
-    // ── ERROR HANDLING ──────────────────────────────────────────────────────
-    let arReadyFired = false;
-    sceneEl.addEventListener('arReady', () => { arReadyFired = true; }, { once: true });
-
-    sceneEl.addEventListener('arError', (e) => {
-      setTimeout(() => {
-        if (arReadyFired) return;
-        const detail = (e.detail || '').toString().toLowerCase();
-        let msg;
+    // ── ERROR HANDLING ───────────────────────────────────────────────────────
+    sceneEl.addEventListener('arError', function(e) {
+      // Small delay so arReady (if it fires just after) can cancel the error display
+      setTimeout(function() {
+        if (arStarted) return;
+        var detail = (e.detail || '').toString().toLowerCase();
+        var msg;
         if (location.protocol !== 'https:') {
           msg = 'HTTPS is required for camera access.<br>Please open this page over a secure connection.';
         } else if (detail.includes('permission') || detail.includes('denied')) {
@@ -541,7 +544,7 @@
       }, 2000);
     });
 
-    function showError(html, showRetry = false) {
+    function showError(html, showRetry) {
       clearInterval(simInterval);
       clearTimeout(loadTimeout);
       startBtn.style.display          = 'none';
